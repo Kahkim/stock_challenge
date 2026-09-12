@@ -126,7 +126,11 @@ function decide(p, ctx) {
   for (const s of stocks) nav += (p.holdings[s.code] || 0) * s.last;
   if (!(nav > 0)) return [];
 
-  // ── 호가 제시형: 자기 현금과 자기 주식으로 양쪽에 지정가를 건다 ──
+  // ── 호가 제시형: 자기 현금과 자기 주식으로 양쪽에 사다리로 호가를 건다 ──
+  //
+  // 한 단계에만 깔면 그 물량이 소진되는 순간 호가창이 비어서, 늦게 온 사람은
+  // "비싸게 사는" 게 아니라 아예 못 사게 된다. 그건 눈치싸움이 아니라 그냥 먹통이다.
+  // 여러 단계로 깔아야 늦은 사람도 체결은 되되 위로 갈수록 비싸진다.
   if (p.botType === 'maker') {
     // 뉴스가 뜬 종목은 거래가 몰리므로 그쪽에 호가를 대줄 확률을 높인다
     const hot = ctx.news && ctx.news.length
@@ -135,14 +139,22 @@ function decide(p, ctx) {
       ? hot[Math.floor(rnd() * hot.length)]
       : stocks[Math.floor(rnd() * stocks.length)];
     if (!(s.last > 0)) return [];
-    const out = [];
-    const bid = roundToTick(s.last * (1 - makerSpread * (0.5 + rnd())));
-    const ask = roundToTick(s.last * (1 + makerSpread * (0.5 + rnd())));
-    const bq = Math.floor((p.cash * 0.10) / Math.max(1, bid) / lotSize) * lotSize;
-    if (bq >= lotSize) out.push({ code: s.code, side: 'buy', price: bid, qty: bq });
+
+    const levels = Math.max(1, ctx.makerLevels || 1);
     const held = p.holdings[s.code] || 0;
-    const sq = Math.floor(held * 0.25 / lotSize) * lotSize;
-    if (sq >= lotSize) out.push({ code: s.code, side: 'sell', price: ask, qty: sq });
+    const cashPer = (p.cash * 0.20) / levels;
+    const sharePer = (held * 0.40) / levels;
+    const out = [];
+    for (let L = 1; L <= levels; L++) {
+      // 단계가 올라갈수록 현재가에서 멀어진다
+      const off = makerSpread * (L - 0.5 + rnd());
+      const bid = roundToTick(s.last * (1 - off));
+      const ask = roundToTick(s.last * (1 + off));
+      const bq = Math.floor(cashPer / Math.max(1, bid) / lotSize) * lotSize;
+      if (bq >= lotSize) out.push({ code: s.code, side: 'buy', price: bid, qty: bq });
+      const sq = Math.floor(sharePer / lotSize) * lotSize;
+      if (sq >= lotSize) out.push({ code: s.code, side: 'sell', price: ask, qty: sq });
+    }
     return out;
   }
 
@@ -179,15 +191,22 @@ function decide(p, ctx) {
   }
 }
 
-/** 개장 공모(IPO) 청약 — 봇도 사람과 같은 공모 화면만 보고 지른다. */
+/**
+ * 개장 공모(IPO) 청약 — 봇도 사람과 같은 공모 화면만 보고 지른다.
+ *
+ * 청약 금액이 곧 시장에 풀리는 주식의 양이다. 이게 작으면 현금만 남아돌고
+ * 주식이 귀해져서, 매도 호가가 나오는 족족 두꺼운 매수 호가에 즉시 먹혀버린다.
+ * 그러면 사려는 사람은 살 물건이 없어 "먼저 사는" 경쟁 자체가 성립하지 않는다.
+ */
 function decideIpo(p, stock, ctx) {
   const { rnd, lotSize } = ctx;
+  const lo = ctx.ipoBidRatio !== undefined ? ctx.ipoBidRatio : 0.10;
   const eager = p.botType === 'trend' ? 1.05 + rnd() * 0.30
               : p.botType === 'value' ? 0.90 + rnd() * 0.15
               : p.botType === 'maker' ? 0.98 + rnd() * 0.12
               : 0.95 + rnd() * 0.25;
   const price = roundToTick(stock.initialPrice * eager);
-  const budget = p.cash * (0.10 + rnd() * 0.25);
+  const budget = p.cash * (lo + rnd() * lo * 2.5);
   const qty = Math.floor(budget / price / lotSize) * lotSize;
   if (qty < lotSize) return null;
   return { code: stock.code, price, qty };

@@ -295,6 +295,8 @@ class Game {
       cashTarget: this.cfg.botCashTarget,
       sharpness: this.cfg.botSharpness,
       makerSpread: this.cfg.makerSpread,
+      makerLevels: this.cfg.makerLevels,
+      ipoBidRatio: this.cfg.ipoBidRatio,
       stocks: this.stocks.map(s => ({
         code: s.code, last: s.last, fair: s.fair,
         initialPrice: s.initialPrice, refReturn: this._refReturn(s),

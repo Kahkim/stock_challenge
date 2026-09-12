@@ -67,6 +67,8 @@ function sanitizeConfig(raw = {}) {
     botCashBiasSpread: num(raw.botCashBiasSpread, DEFAULTS.botCashBiasSpread, 0, 0.9),
     botSharpness: num(raw.botSharpness, DEFAULTS.botSharpness, 0, 60),
     makerSpread: num(raw.makerSpread, DEFAULTS.makerSpread, 0.0005, 0.1),
+    makerLevels: Math.round(num(raw.makerLevels, DEFAULTS.makerLevels, 1, 10)),
+    ipoBidRatio: num(raw.ipoBidRatio, DEFAULTS.ipoBidRatio, 0.02, 0.35),
     lookbackSec: Math.round(num(raw.lookbackSec, DEFAULTS.lookbackSec, 3, 600)),
     botMix: mix,
   };
