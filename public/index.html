@@ -19,13 +19,22 @@
   .m{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
   #app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);
        display:flex;flex-direction:column;position:relative}
-  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)}
+  /* 스크롤은 문서가 한다. #app 이 min-height:100vh 라 이 안에는 높이 경계가 없어서
+     overflow-y:auto 를 걸어도 내부 스크롤은 생기지 않았다(실측 0px). 그런데 그 선언만으로
+     #view 가 스크롤 컨테이너가 되어 안쪽 position:sticky 가 화면이 아니라 #view 기준으로
+     잡혔다 — 헤더도, 하단 주문 패널도 붙지 않았다(종목 상세에서 400px 내렸을 때 주문
+     패널이 화면 아래 431px 에 있었다). 그래서 지웠다. */
+  .scroll{flex:1;padding-bottom:env(safe-area-inset-bottom)}
   .pad{padding:0 16px}
   button{font-family:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
   button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:8px}
 
+  /* 헤더는 스크롤해도 붙어 있어야 한다. 종목 상세에서 호가와 주문 패널까지 내려가면
+     어느 종목을 보고 있는지 화면에 남는 단서가 없었다. 배경을 깔지 않으면 아래 내용이
+     헤더를 통과해 보인다. z-index 는 하단 바(5·6)보다 위, 토스트(40)보다 아래. */
   .hdr{height:56px;display:flex;align-items:center;gap:8px;padding:0 16px 0 6px;
-       border-bottom:1px solid var(--line);flex-shrink:0}
+       border-bottom:1px solid var(--line);flex-shrink:0;
+       position:sticky;top:0;z-index:8;background:var(--bg)}
   .hdr h1{font-size:17px;font-weight:600;margin:0;flex:1;display:flex;align-items:center;gap:7px}
   .iconbtn{width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 
@@ -1099,7 +1108,7 @@ function vPortfolio(snap,me){
 
 <script>
 /* ---- 라우터 ---- */
-function go(v){ U.view=v; if(v==='stock') U.tab='호가'; view.scrollTop=0; renderNow(); }
+function go(v){ U.view=v; if(v==='stock') U.tab='호가'; toTop(); renderNow(); }
 
 /* ---- 그리기 -------------------------------------------------------------
    화면은 SSE 푸시마다(기본 400ms) 다시 그려진다. 예전에는 view.innerHTML 을 통째로
@@ -1114,6 +1123,13 @@ function go(v){ U.view=v; if(v==='stock') U.tab='호가'; view.scrollTop=0; rend
    (CPU 4배 스로틀에서 통째 교체는 1회 33ms 였다.) */
 
 const scratch = document.createElement('div');
+
+/* 화면을 옮기면 맨 위에서 시작해야 한다. 스크롤하는 건 문서이므로 #view 의 scrollTop 을
+   건드려도 아무 일도 일어나지 않는다(항상 0 이다). */
+function toTop(){
+  const doc = document.scrollingElement || document.documentElement;
+  if (doc.scrollTop) doc.scrollTop = 0;
+}
 
 function patchAttrs(live,next){
   for(const a of Array.from(next.attributes))
@@ -1164,7 +1180,7 @@ function paint(){
   if(U.view!==lastView){        // 화면이 통째로 바뀔 때는 남길 게 없다 — 그대로 새로 깐다
     lastView=U.view; lastHtml=html;
     view.innerHTML=html;
-    view.scrollTop=0;
+    toTop();
   }else if(html!==lastHtml){    // 값이 하나도 안 바뀌면 DOM 을 만지지 않는다
     lastHtml=html;
     scratch.innerHTML=html;
