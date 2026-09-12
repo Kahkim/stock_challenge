@@ -134,6 +134,25 @@ let _s=1; const rnd=()=>{_s=(_s*1664525+1013904223)>>>0; return _s/4294967296;};
 const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
 const pick = a => a[Math.floor(rnd()*a.length)];
 
+/** 현재 판의 설정. 더미는 CFG 로 시작하고, 실서버에서는 snapshot.config 가 덮어쓴다.
+    화면은 CFG 가 아니라 항상 CONF 를 읽는다 — 방마다 값이 다를 수 있기 때문이다. */
+let CONF = {...CFG};
+/** 내가 낸 공모 청약 — 서버는 남의 것과 합산한 ipoDemand 만 주므로 내 몫은 화면이 기억한다. */
+const MY_IPO_BIDS = {}, MY_IPO_COST = {};
+/** 차트 이력. 실서버 스냅샷에는 이력이 없으므로 화면이 1초에 한 점씩 쌓는다. */
+const HIST = {};
+function pushHist(snap){
+  if(snap.phase!=='trading') return;
+  const t=snap.elapsedSec;
+  for(const st of snap.stocks){
+    const h=HIST[st.code]||(HIST[st.code]=[]);
+    if(h.length && h[h.length-1].t>=t) continue;
+    h.push({t,price:st.last,fair:st.fair});
+    if(h.length>1800) h.shift();
+  }
+}
+function syncConf(snap){ if(snap && snap.config) CONF = {...CONF, ...snap.config}; }
+
 const G = {
   phase:'lobby', cfg:{...CFG}, speed:1, elapsed:0, ipoElapsed:0, seq:0,
   stocks:[], players:[], me:null, notices:[], tape:[], news:[], newsLog:[], salaryCount:0, endedAt:null,
@@ -381,7 +400,8 @@ function closeIpo(){
      order/cancel → POST /api/rooms/{code}/orders , /orders/cancel
      snapshot/me  → SSE  /api/rooms/{code}/stream 의 state 이벤트
    ------------------------------------------------------------------------ */
-const API = {
+let API;
+const MockAPI = {
   getMeta:()=>({stockPool:POOL, defaults:{...CFG}}),
   createRoom(cfg){
     Object.assign(G.cfg,cfg); G.players=makePlayers(); G.me=G.players[0];
@@ -481,7 +501,7 @@ const API = {
 const $ = s => document.querySelector(s);
 const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
 const U = { view:'setup', codes:POOL.map(s=>s.code), dur:15, ipoSec:45, seed:1000000,
-            bots:30, code:null, tab:'호가', price:0, qty:CFG.lotSize, market:false,
+            bots:30, code:null, tab:'호가', price:0, qty:CONF.lotSize, market:false,
             ipoCode:'SNU', ipoPrice:0, ipoQty:0, sort:'chg' };
 
 const n  = v => Math.round(v).toLocaleString('en-US');
@@ -523,10 +543,10 @@ function pushFill(f){
    sign 과 impactPct 는 방향이 그대로 드러나므로 화면에 쓰지 않는다(헤드라인으로 판단하는 게 설계 의도).
    즉시 체결되는 주문 버튼은 편의가 아니라 밸런스다 — 지정가를 현재가에 걸면 현금이 묶인 채 뒤처진다. */
 function onNews(nw){
-  const s=G.stocks.find(x=>x.code===nw.code); if(!s) return;
+  const s=API.snapshot().stocks.find(x=>x.code===nw.code); if(!s) return;
   const me=API.me(), tr=me.tradable.find(t=>t.code===nw.code)||{maxBuyQty:0,maxSellQty:0};
   const bpx=roundTick(s.last*1.02), spx=roundTick(s.last*0.98);
-  const canSell=tr.maxSellQty>=CFG.lotSize;
+  const canSell=tr.maxSellQty>=CONF.lotSize;
   showToast(`<div style="display:flex;align-items:center;gap:9px">
       <span class="badge" style="background:var(--warnT);color:var(--warn);gap:4px;letter-spacing:.04em">
         ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',12,'var(--warn)',1.6)}돌발 뉴스</span>
@@ -557,15 +577,16 @@ function newsBanner(snap){
         <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${nw.lifeSec-nw.ageSec}초</span>
       </button>`;}).join('')}</div>`;
 }
+function salaryTicks(snap){ return Math.floor(snap.elapsedSec/(CONF.salaryIntervalSec||60)); }
 function pushSalary(b){
   const mine=(b&&b.mine&&b.mine.length)? b.mine.join(' · ') : '보유 주식이 없어 배정 없음';
   showToast(`<div style="display:flex;align-items:center;gap:10px">
     <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
       justify-content:center;background:var(--accT)">${svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',18,'var(--acc)',1.5)}</div>
-    <div class="grow"><div style="font-size:13px;font-weight:700">월급 입금 · ${G.salaryCount}분차</div>
+    <div class="grow"><div style="font-size:13px;font-weight:700">월급 입금 · ${b&&b.tick?b.tick+'분차':'정산'}</div>
       <div style="font-size:11px;color:var(--dim2);margin-top:2px">무상증자 ${b?(b.rate*100).toFixed(1)+'%':'—'} · ${esc(mine)}</div>
-      <div style="font-size:10px;color:var(--dim2);margin-top:3px">인플레는 현금을 깎지 않습니다 — 적정가가 분당 ${(G.cfg.inflationPerMin*100).toFixed(1)}% 오릅니다</div></div>
-    <div class="m" style="font-size:16px;font-weight:700;color:var(--acc)">+${n(G.cfg.salaryAmount)}</div></div>`);
+      <div style="font-size:10px;color:var(--dim2);margin-top:3px">인플레는 현금을 깎지 않습니다 — 적정가가 분당 ${(CONF.inflationPerMin*100).toFixed(1)}% 오릅니다</div></div>
+    <div class="m" style="font-size:16px;font-weight:700;color:var(--acc)">+${n(CONF.salaryAmount)}</div></div>`);
 }
 function toastErr(e){ showToast(`<div style="display:flex;gap:10px;align-items:center">
   <div style="width:32px;height:32px;border-radius:10px;background:var(--warnT);flex-shrink:0;
@@ -577,7 +598,7 @@ function toastErr(e){ showToast(`<div style="display:flex;gap:10px;align-items:c
 function vSetup(){
   const seg=(id,opts,cur)=>`<div class="seg">${opts.map(o=>
     `<button data-act="set" data-k="${id}" data-v="${o.v}" aria-pressed="${o.v==cur}">${o.t}</button>`).join('')}</div>`;
-  return `<div class="hdr"><h1>방 만들기</h1><span class="m" style="font-size:11px;color:var(--dim2)">더미 API</span></div>
+  return `<div class="hdr"><h1>방 만들기</h1><span id="mode" class="m" style="font-size:11px;color:var(--dim2)">더미 API</span></div>
   <div class="pad" style="padding-top:20px;padding-bottom:20px;display:flex;flex-direction:column;gap:22px">
     <div><div class="lbl">거래 종목 <span style="color:var(--acc)">${U.codes.length} / 10</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">${POOL.map(s=>{const on=U.codes.includes(s.code);
@@ -599,17 +620,17 @@ function vSetup(){
   </div>
   <div class="sticky"><button class="cta" data-act="start" ${U.codes.length<2?'disabled':''}>게임 시작</button>
     <div style="text-align:center;font-size:11px;color:var(--dim2);margin-top:10px">
-      월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${CFG.inflationPerMin*100}%/분 · 무상증자 최대 ${CFG.maxBonusRate*100}% · ${CFG.lotSize}주 단위 · 수수료 ${(CFG.feeRate*100).toFixed(2)}%</div></div>`;
+      월급 ${n(CONF.salaryAmount)}/분 · 인플레 ${CONF.inflationPerMin*100}%/분 · 무상증자 최대 ${CONF.maxBonusRate*100}% · ${CONF.lotSize}주 단위 · 수수료 ${(CONF.feeRate*100).toFixed(2)}%</div></div>`;
 }
 
 /* ---- 2. 개장 공모 ---- */
-function vIpo(snap){
+function vIpo(snap,me){
   const s=snap.stocks.find(x=>x.code===U.ipoCode)||snap.stocks[0];
-  if(!U.ipoPrice) U.ipoPrice=roundTick(s.last*1.05);
-  if(!U.ipoQty) U.ipoQty=floorLot(G.cfg.seedMoney*0.15/U.ipoPrice)||CFG.lotSize;
+  if(!U.ipoPrice) U.ipoPrice=roundTick(s.open*1.20);
+  if(!U.ipoQty) U.ipoQty=floorLot(CONF.seedMoney*0.15/U.ipoPrice)||CONF.lotSize;
   const mineBy={}; for(const st of G.stocks) mineBy[st.code]=st.ipoBids.filter(b=>b.playerId==='me')
     .reduce((a,b)=>a+b.qty,0);
-  const reserved=G.cfg.seedMoney-G.me.cash;
+  const reserved=CONF.seedMoney-G.me.cash;
   return `<div style="padding:16px 16px 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;align-items:center;gap:8px">
       <div class="grow" style="font-size:15px;font-weight:600">개장 공모</div>
@@ -617,8 +638,8 @@ function vIpo(snap){
     <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
       <div class="m" style="font-size:40px;font-weight:700;color:var(--warn)">${snap.ipoRemainSec}</div>
       <div style="font-size:14px;color:var(--dim)">초 뒤 마감</div><div class="grow"></div>
-      <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(G.me.cash)}</div></div>
-    <div class="bar" style="margin:12px 0 16px"><i style="width:${(1-snap.ipoRemainSec/G.cfg.ipoSec)*100}%"></i></div></div>
+      <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(me.cash)}</div></div>
+    <div class="bar" style="margin:12px 0 16px"><i style="width:${(1-snap.ipoRemainSec/CONF.ipoSec)*100}%"></i></div></div>
   <div class="pad" style="padding-top:16px">
     <div style="display:flex;gap:10px;background:var(--warnT);border:1px solid rgba(245,165,36,.35);
       border-radius:14px;padding:14px 16px">
@@ -644,25 +665,29 @@ function vIpo(snap){
   <div class="sticky">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
       ${dot(s.color)}<div class="grow" style="font-size:15px;font-weight:700">${s.name} 청약</div>
-      <div class="m" style="font-size:11px;color:var(--dim2)">호가 ${tickSize(U.ipoPrice)}원 · ${CFG.lotSize}주 단위</div></div>
+      <div class="m" style="font-size:11px;color:var(--dim2)">호가 ${tickSize(U.ipoPrice)}원 · ${CONF.lotSize}주 단위</div></div>
     <div class="step"><span style="font-size:11px;color:var(--dim2);width:44px">가격</span>
       <span class="v m">${n(U.ipoPrice)}</span>
       <button data-act="ipoP" data-v="-1" aria-label="가격 내림">${iMinus}</button>
       <button data-act="ipoP" data-v="1" aria-label="가격 올림">${iPlus}</button></div>
+    <div class="chips" style="margin-top:8px">
+      ${[10,20,30].map(r=>`<button data-act="ipoPct" data-v="${r}" class="m"
+        style="${U.ipoPrice===roundTick(s.open*(1+r/100))?'border-color:var(--acc);color:var(--text)':''}">초기가 +${r}%</button>`).join('')}</div>
     <div class="step" style="margin-top:8px"><span style="font-size:11px;color:var(--dim2);width:44px">수량</span>
       <span class="v m">${n(U.ipoQty)}</span>
       <button data-act="ipoQ" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
       <button data-act="ipoQ" data-v="1" aria-label="수량 늘림">${iPlus}</button></div>
     <div style="display:flex;margin:14px 2px 12px"><div class="grow" style="font-size:12px;color:var(--dim2)">예치 증거금</div>
       <div class="m" style="font-size:14px;font-weight:700">${n(U.ipoPrice*U.ipoQty)}원</div></div>
-    <button class="cta" data-act="ipoBid">청약하기</button></div>`;
+    <button class="cta" data-act="ipoBid">청약하기</button>
+    <div class="hint">${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',16,'var(--warn)',1.5)}
+      <span><b style="color:var(--warn)">낮게 쓰면 한 주도 못 받습니다.</b> 전원 같은 낙찰가로 배정되므로 높게 써도 손해가 없어요 — 차액과 미배정분은 전액 환불됩니다.</span></div></div>`;
 }
 
 /* ---- 3. 전체 시황 ---- */
 function vMarket(snap,me){
   const sorted=[...snap.stocks].sort((a,b)=> U.sort==='chg'? b.changePct-a.changePct : b.vsFairPct-a.vsFairPct);
-  const bonusQty = G.stocks.reduce((a,s)=>a+s.issued,0);
-  return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
+    return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;align-items:center;gap:8px">
       <div class="grow" style="font-size:15px;font-weight:600">동문회 챌린지</div>
       <span class="badge" style="background:var(--upT);color:var(--up);gap:5px;letter-spacing:.06em">
@@ -672,9 +697,9 @@ function vMarket(snap,me){
       <div class="m" style="font-size:34px;font-weight:700">${clk(snap.remainSec)}</div>
       <div style="font-size:13px;color:var(--dim)">남음</div><div class="grow"></div>
       <div style="font-size:12px;color:var(--dim2)">사람 ${snap.humanCount} · 봇 ${snap.playerCount-snap.humanCount}</div></div>
-    <div class="bar" style="margin:12px 0 10px"><i style="width:${snap.elapsedSec/(G.cfg.durationMin*60)*100}%"></i></div>
+    <div class="bar" style="margin:12px 0 10px"><i style="width:${snap.elapsedSec/(CONF.durationMin*60)*100}%"></i></div>
     <div style="display:flex;align-items:center;padding-bottom:12px">
-      <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(G.cfg.salaryAmount)}/분 · 인플레 ${G.cfg.inflationPerMin*100}%/분</span>
+      <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(CONF.salaryAmount)}/분 · 인플레 ${CONF.inflationPerMin*100}%/분</span>
       <button data-act="go" data-v="result" style="height:32px;padding:0 12px;border-radius:8px;
         border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button></div></div>
 
@@ -698,11 +723,11 @@ function vMarket(snap,me){
             <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
       <div style="height:1px;background:var(--line)"></div>
       <div style="display:flex;align-items:center;padding:12px 0 10px">
-        <div class="grow lbl" style="margin:0">분당 정산 · ${G.salaryCount}회</div>
-        <span class="badge m" style="background:var(--surf3);color:var(--dim)">다음 ${clk(G.cfg.salaryIntervalSec-(snap.elapsedSec%G.cfg.salaryIntervalSec))}</span></div>
+        <div class="grow lbl" style="margin:0">분당 정산 · ${salaryTicks(snap)}회</div>
+        <span class="badge m" style="background:var(--surf3);color:var(--dim)">다음 ${clk(CONF.salaryIntervalSec-(snap.elapsedSec%CONF.salaryIntervalSec))}</span></div>
       <div style="display:flex;gap:8px;padding-bottom:14px">
         <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
-          <div style="font-size:11px;color:var(--dim2)">월급 · ${n(G.cfg.salaryAmount)}/분</div>
+          <div style="font-size:11px;color:var(--dim2)">월급 · ${n(CONF.salaryAmount)}/분</div>
           <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">+${n(me.salaryTotal)}</div></div>
         <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
           <div style="font-size:11px;color:var(--dim2)">내 보유 주식</div>
@@ -717,7 +742,7 @@ function vMarket(snap,me){
         background:${U.sort===k?'var(--surf3)':'transparent'};border:1px solid ${U.sort===k?'var(--line2)':'var(--line)'};
         color:${U.sort===k?'var(--text)':'var(--dim2)'}">${t}</button>`).join('')}</div>
     <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
-      <span>인플레로 적정가가 분당 ${(G.cfg.inflationPerMin*100).toFixed(1)}%씩 오릅니다. 등락률은 얼마나 올랐나, 괴리율은 <b style="color:var(--dim)">적정가보다 비싼가</b>를 말합니다.</span></div></div>
+      <span>인플레로 적정가가 분당 ${(CONF.inflationPerMin*100).toFixed(1)}%씩 오릅니다. 등락률은 얼마나 올랐나, 괴리율은 <b style="color:var(--dim)">적정가보다 비싼가</b>를 말합니다.</span></div></div>
   <div style="border-top:1px solid var(--line)">${sorted.map(s=>`
     <button data-act="stock" data-v="${s.code}" class="row" style="height:66px;width:100%;text-align:left">
       ${dot(s.color)}
@@ -761,7 +786,7 @@ function vStock(snap,me){
   // 수량 상한은 서버가 계산해서 준다(me.tradable). 지정가가 현재가보다 높으면 그만큼 줄인다.
   const tr=me.tradable.find(t=>t.code===s.code)||{maxBuyQty:0,maxSellQty:0};
   const px=U.market?s.last:U.price;
-  const maxBuy=Math.min(tr.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate))));
+  const maxBuy=Math.min(tr.maxBuyQty, floorLot(me.cash/(px*(1+CONF.feeRate))));
   const maxSell=tr.maxSellQty;
   const amt=(U.market?s.last:U.price)*U.qty;
   const mineAt={}; for(const o of myOrders) mineAt[o.price]=(mineAt[o.price]||0)+o.qty;
@@ -790,7 +815,7 @@ function vStock(snap,me){
         <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}
         ${mine?`<span class="badge m" style="position:relative;background:var(--acc);color:var(--ink)">내 ${n(mine)}</span>`:''}</span></button>`; }
 
-  const fills=G.tape.filter(t=>t.code===s.code).slice(-14).reverse();
+  const fills=snap.tape.filter(t=>t.code===s.code).slice(-14).reverse();
   const body = U.tab==='호가' ? `
     <div style="display:flex;align-items:center;height:34px;padding:8px 16px 0">
       <span style="flex:1;text-align:right;padding-right:12px;font-size:10px;color:var(--dim2);font-weight:600">매도 잔량</span>
@@ -887,11 +912,12 @@ function vStock(snap,me){
 
 function drawChart(){
   const c=document.getElementById('chart'); if(!c) return;
-  const s=G.stocks.find(x=>x.code===U.code); if(!s||!s.history.length) return;
+  const s=API.snapshot().stocks.find(x=>x.code===U.code); if(!s) return;
+  const hist=HIST[U.code]||[]; if(hist.length<2) return;
   const dpr=window.devicePixelRatio||1, w=c.clientWidth, h=200;
   c.width=w*dpr; c.height=h*dpr; const g=c.getContext('2d'); g.scale(dpr,dpr);
   g.clearRect(0,0,w,h);
-  const hs=s.history, lo=Math.min(...hs.map(p=>Math.min(p.price,p.fair)))*0.99,
+  const hs=hist, lo=Math.min(...hs.map(p=>Math.min(p.price,p.fair)))*0.99,
         hi=Math.max(...hs.map(p=>Math.max(p.price,p.fair)))*1.01;
   const X=i=>hs.length<2?0:i/(hs.length-1)*(w-46), Y=v=>(hi-v)/(hi-lo||1)*(h-24)+8;
   g.strokeStyle='#2E3540'; g.lineWidth=1; g.beginPath();
@@ -912,7 +938,7 @@ function drawChart(){
 function vResult(snap,me){
   const win=snap.ranking[0];
   return `<div class="hdr"><h1>게임 종료</h1>
-    <span class="m" style="font-size:12px;color:var(--dim2)">${G.cfg.durationMin}분 · 사람 ${snap.humanCount} + 봇 ${snap.playerCount-snap.humanCount}</span></div>
+    <span class="m" style="font-size:12px;color:var(--dim2)">${CONF.durationMin}분 · 사람 ${snap.humanCount} + 봇 ${snap.playerCount-snap.humanCount}</span></div>
   <div class="pad" style="padding-top:20px">
     <div class="card" style="border-color:var(--acc);border-radius:18px;padding:22px 20px;text-align:center">
       <div style="display:flex;justify-content:center">${svg('M7 4h10v5a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3M9 20h6M12 14v6',32,'var(--acc)',1.5)}</div>
@@ -959,7 +985,7 @@ function bottomNav(active){
 
 /* ---- 내 자산 ---- */
 function vPortfolio(snap,me){
-  const totalBonus=me.holdings.reduce((a,h)=>a+h.bonus,0);
+  const totalBonus=me.holdings.reduce((a,h)=>a+(h.bonus||0),0);
   const evalTotal=me.nav-me.cash-me.lockedCash;
   const holds=[...me.holdings].sort((a,b)=>b.evalAmount-a.evalAmount);
   return `<div class="hdr"><h1>내 자산</h1>
@@ -1028,10 +1054,11 @@ function vPortfolio(snap,me){
 /* ---- 라우터 · 루프 ---- */
 function go(v){ U.view=v; if(v==='stock'){U.tab='호가';} view.scrollTop=0; render(); }
 function render(){
-  const snap=API.snapshot(), me = G.me ? API.me() : null;
+  const snap=API.snapshot(); syncConf(snap); pushHist(snap);
+  const me = (LIVE.on || G.me) ? API.me() : null;
   const st=view.scrollTop;
   view.innerHTML = U.view==='setup'? vSetup()
-    : U.view==='ipo'? vIpo(snap)
+    : U.view==='ipo'? vIpo(snap,me)
     : U.view==='assets'? vPortfolio(snap,me)
     : U.view==='stock'? vStock(snap,me)
     : U.view==='result'? vResult(snap,me)
@@ -1039,61 +1066,212 @@ function render(){
   view.scrollTop=st;
   if(U.view==='stock'&&U.tab==='차트') drawChart();
 }
+function routePhase(ph){
+  if(ph==='ipo'&&U.view!=='ipo') U.view='ipo';
+  if(ph==='ended'&&U.view!=='result') U.view='result';
+}
 let last=performance.now();
 setInterval(()=>{
   const now=performance.now(); const dt=Math.min(1,(now-last)/1000); last=now;
-  if(G.phase==='ipo'||G.phase==='trading'){
-    tick(dt);
-    if(G.phase==='ipo'&&U.view!=='ipo') U.view='ipo';
-    if(G.phase==='ended'&&U.view!=='result') { U.view='result'; }
-    render();
-  }
+  if(LIVE.on){ if(LIVE.snap){ routePhase(LIVE.snap.phase); render(); } return; }
+  if(G.phase==='ipo'||G.phase==='trading'){ tick(dt); routePhase(G.phase); render(); }
 },250);
 
 /* ---- 입력 ---- */
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]'); if(!b||b.disabled) return;
   const a=b.dataset.act, v=b.dataset.v, k=b.dataset.k;
-  const snap=API.snapshot(); const s=G.stocks.find(x=>x.code===U.code);
+  const snap=API.snapshot(); const s=snap.stocks.find(x=>x.code===U.code);
   if(a==='set'){ const num=!isNaN(Number(v))&&k!=='tab'&&k!=='sort';
     U[k]= k==='market'? v==='1' : (num? Number(v) : v);
     if(k==='tab'&&v==='차트') setTimeout(drawChart,0); }
   else if(a==='tog'){ U.codes = U.codes.includes(v)? U.codes.filter(c=>c!==v) : [...U.codes,v]; }
   else if(a==='start'){ if(U.codes.length<2) return;
-    API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,seedMoney:U.seed,botCount:U.bots});
-    U.ipoPrice=0; U.ipoQty=0; U.ipoCode=U.codes[0]; go(G.phase==='ipo'?'ipo':'market'); return; }
+    b.disabled=true; b.textContent='시작하는 중…';
+    const r=await API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,
+      seedMoney:U.seed,botCount:U.bots});
+    if(r&&r.error){ toastErr(r.error); render(); return; }
+    for(const k in MY_IPO_BIDS) delete MY_IPO_BIDS[k];
+    for(const k in MY_IPO_COST) delete MY_IPO_COST[k];
+    for(const k in HIST) delete HIST[k];
+    U.ipoPrice=0; U.ipoQty=0; U.ipoCode=U.codes[0];
+    go(API.snapshot().phase==='ipo'?'ipo':'market'); return; }
   else if(a==='ipoPick'){ U.ipoCode=v; U.ipoPrice=0; U.ipoQty=0; }
   else if(a==='ipoP'){ U.ipoPrice=Math.max(tickSize(U.ipoPrice),roundTick(U.ipoPrice+Number(v)*tickSize(U.ipoPrice))); }
-  else if(a==='ipoQ'){ U.ipoQty=Math.max(CFG.lotSize,U.ipoQty+Number(v)*CFG.lotSize); }
-  else if(a==='ipoBid'){ const r=API.ipoBid(U.ipoCode,U.ipoPrice,U.ipoQty);
-    if(r.error) toastErr(r.error); else showToast(`<div style="font-size:13px;font-weight:700">청약 접수 · ${esc(G.stocks.find(x=>x.code===U.ipoCode).name)}</div>
-      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">${n(r.price)} × ${n(r.qty)}주 · 증거금 ${n(r.reserved)}원 예치</div>`,2600); }
-  else if(a==='stock'){ U.code=v; U.price=G.stocks.find(x=>x.code===v).last; U.qty=CFG.lotSize; go('stock'); return; }
-  else if(a==='go'){ if(v==='result'){ G.phase='ended'; } if(v==='setup'){ G.phase='lobby'; } go(v); return; }
-  else if(a==='again'){ API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,seedMoney:U.seed,botCount:U.bots});
-    U.ipoPrice=0; U.ipoQty=0; go(G.phase==='ipo'?'ipo':'market'); return; }
+  else if(a==='ipoQ'){ U.ipoQty=Math.max(CONF.lotSize,U.ipoQty+Number(v)*CONF.lotSize); }
+  else if(a==='ipoPct'){ const st=snap.stocks.find(x=>x.code===U.ipoCode);
+    if(st) U.ipoPrice=roundTick(st.open*(1+Number(v)/100)); }
+  else if(a==='ipoBid'){ const r=await API.ipoBid(U.ipoCode,U.ipoPrice,U.ipoQty);
+    if(r.error) toastErr(r.error); else { MY_IPO_BIDS[U.ipoCode]=(MY_IPO_BIDS[U.ipoCode]||0)+r.qty;
+      MY_IPO_COST[U.ipoCode]=(MY_IPO_COST[U.ipoCode]||0)+r.reserved;
+      showToast(`<div style="font-size:13px;font-weight:700">청약 접수 · ${esc((snap.stocks.find(x=>x.code===U.ipoCode)||{}).name||'')}</div>
+      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">${n(r.price)} × ${n(r.qty)}주 · 증거금 ${n(r.reserved)}원 예치</div>`,2600); } }
+  else if(a==='stock'){ U.code=v; U.price=(snap.stocks.find(x=>x.code===v)||{last:0}).last; U.qty=CONF.lotSize; go('stock'); return; }
+  else if(a==='go'){
+    if(v==='result'){ if(LIVE.on) await LiveAPI.end(); else G.phase='ended'; }
+    if(v==='setup'){ if(LIVE.on) LiveAPI.reset(); else G.phase='lobby'; }
+    go(v); return; }
+  else if(a==='again'){
+    const r=await API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,
+      seedMoney:U.seed,botCount:U.bots});
+    if(r&&r.error){ toastErr(r.error); render(); return; }
+    for(const k in MY_IPO_BIDS) delete MY_IPO_BIDS[k];
+    for(const k in MY_IPO_COST) delete MY_IPO_COST[k];
+    for(const k in HIST) delete HIST[k];
+    U.ipoPrice=0; U.ipoQty=0; go(API.snapshot().phase==='ipo'?'ipo':'market'); return; }
   else if(a==='px'){ U.price=Number(v); U.market=false; }
   else if(a==='p'){ U.price=Math.max(tickSize(U.price),roundTick(U.price+Number(v)*tickSize(U.price))); }
-  else if(a==='q'){ U.qty=Math.max(CFG.lotSize,U.qty+Number(v)*CFG.lotSize); }
+  else if(a==='q'){ U.qty=Math.max(CONF.lotSize,U.qty+Number(v)*CONF.lotSize); }
   else if(a==='ratio'){ const me=API.me(); const px=U.market? s.last : U.price;
-    U.qty=Math.max(CFG.lotSize,floorLot(me.cash/(px*(1+CFG.feeRate))*Number(v)/100)); }
+    U.qty=Math.max(CONF.lotSize,floorLot(me.cash/(px*(1+CONF.feeRate))*Number(v)/100)); }
   else if(a==='newsBuy'||a==='newsSell'){
-    const st=G.stocks.find(x=>x.code===v), me2=API.me();
+    const st=snap.stocks.find(x=>x.code===v), me2=API.me();
     const t=me2.tradable.find(x=>x.code===v)||{maxBuyQty:0,maxSellQty:0};
     const buy=a==='newsBuy';
     const px=roundTick(st.last*(buy?1.02:0.98));
-    const cap=buy? Math.min(t.maxBuyQty, floorLot(me2.cash/(px*(1+CFG.feeRate)))) : t.maxSellQty;
-    const qty=Math.max(CFG.lotSize, floorLot(cap*0.5));
-    if(cap<CFG.lotSize){ toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
+    const cap=buy? Math.min(t.maxBuyQty, floorLot(me2.cash/(px*(1+CONF.feeRate)))) : t.maxSellQty;
+    const qty=Math.max(CONF.lotSize, floorLot(cap*0.5));
+    if(cap<CONF.lotSize){ toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
       message:buy?'현금이 부족합니다':'보유 주식이 부족합니다'}); }
-    else { const r=API.order(v,buy?'buy':'sell',px,qty,false);
+    else { const r=await API.order(v,buy?'buy':'sell',px,qty,false);
       if(r.error) toastErr(r.error); }
   }
-  else if(a==='cancel'){ API.cancel(v); }
-  else if(a==='order'){ const r=API.order(U.code,v,U.market?null:U.price,U.qty,U.market);
+  else if(a==='cancel'){ await API.cancel(v); }
+  else if(a==='order'){ const r=await API.order(U.code,v,U.market?null:U.price,U.qty,U.market);
     if(r.error) toastErr(r.error);
     else if(!r.filled&&!r.resting) toastErr({code:'NOT_FILLED',message:'체결도 등록도 되지 않았습니다'}); }
   render();
 });
-render();
+</script>
+
+<script>
+/* ============================================================================
+   실서버 어댑터.  화면은 API.snapshot() / API.me() 만 읽으므로 이 객체만 바뀐다.
+   같은 출처에서 /api/health 가 응답하면 실서버, 아니면 더미로 동작한다.
+   (Artifact 는 외부 네트워크가 막혀 있어 항상 더미로 떨어진다)
+   ========================================================================= */
+API = MockAPI;
+const LIVE = { on:false, code:null, hostToken:null, token:null, playerId:null,
+               snap:null, me:null, es:null, seenNews:new Set(), lastNotice:0, prevHold:null };
+/** 무상증자 누적. 서버가 개인별 배정량을 주지 않으므로 화면이 푸시마다 역산한다.
+    보유 증가분 − 이번 푸시의 체결분 = 증자분. 접속이 끊기면 누계는 0부터 다시 센다. */
+const BONUS = {};
+function trackBonus(me){
+  if(!me) return;
+  const now={}; for(const h of (me.holdings||[])) now[h.code]=h.qty;
+  if(LIVE.prevHold){
+    const traded={};
+    for(const f of (me.newFills||[])) traded[f.code]=(traded[f.code]||0)+(f.side==='buy'?f.qty:-f.qty);
+    for(const code in now){
+      const d=now[code]-(LIVE.prevHold[code]||0)-(traded[code]||0);
+      if(d>0) BONUS[code]=(BONUS[code]||0)+d;
+    }
+  }
+  LIVE.prevHold=now;
+}
+
+const EMPTY_SNAP = () => ({phase:'lobby',elapsedSec:0,remainSec:0,ipoRemainSec:0,
+  playerCount:0,humanCount:0,config:{...CONF},stocks:[],ranking:[],notices:[],tape:[],news:[]});
+const EMPTY_ME = () => ({id:'',name:'',cash:0,lockedCash:0,nav:0,invested:1,salaryTotal:0,
+  realized:0,rank:0,rankTotal:0,holdings:[],openOrders:[],tradable:[]});
+
+async function jreq(method,url,body,extra){
+  const r = await fetch(url,{method,
+    headers:{'Content-Type':'application/json',...(extra||{})},
+    body: body===undefined? undefined : JSON.stringify(body)});
+  let j=null; try{ j=await r.json(); }catch(e){ j=null; }
+  if(!r.ok && (!j||!j.error)) return {error:{code:'HTTP_'+r.status,message:'서버 오류 ('+r.status+')'}};
+  return j||{};
+}
+const hostHdr   = () => ({'X-Host-Token':LIVE.hostToken});
+const playerHdr = () => ({'X-Player-Token':LIVE.token});
+
+/** SSE 로 들어온 새 사건만 골라 팝업으로 올린다. 렌더마다 하면 중복으로 뜬다. */
+function onLiveEvent(d){
+  const snap=d.snapshot, me=d.me;
+  trackBonus(me);
+  if(me && me.newFills) for(const f of me.newFills)
+    pushFill({code:f.code,name:f.name,side:f.side,price:f.price,qty:f.qty,
+      amount:f.amount!=null?f.amount:f.price*f.qty, fee:f.fee!=null?f.fee:0, tag:f.tag});
+  if(snap && snap.notices) for(const nt of snap.notices){
+    if(nt.seq<=LIVE.lastNotice) continue;
+    LIVE.lastNotice=nt.seq;
+    if(nt.kind==='salary'||nt.kind==='bonus') showToast(
+      `<div style="display:flex;align-items:center;gap:10px">
+        <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;
+          align-items:center;justify-content:center;background:var(--accT)">
+          ${svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',18,'var(--acc)',1.5)}</div>
+        <div class="grow"><div style="font-size:13px;font-weight:700">${esc(nt.text)}</div>
+        <div style="font-size:10px;color:var(--dim2);margin-top:3px">인플레는 현금을 깎지 않습니다 — 적정가가 분당 ${((CONF.inflationPerMin||0)*100).toFixed(1)}% 오릅니다</div></div></div>`);
+    else if(nt.kind==='ipo'||nt.kind==='open'||nt.kind==='close') showToast(
+      `<div style="font-size:13px;font-weight:700">${esc(nt.text)}</div>`,3000);
+  }
+  if(snap && snap.news) for(const nw of snap.news){
+    if(LIVE.seenNews.has(nw.id)) continue;
+    LIVE.seenNews.add(nw.id); onNews(nw);
+  }
+}
+
+const LiveAPI = {
+  getMeta: () => jreq('GET','/api/meta'),
+  async createRoom(cfg){
+    LiveAPI.reset();
+    const r1 = await jreq('POST','/api/rooms',{title:'Stock Challenge',config:cfg});
+    if(r1.error) return r1;
+    LIVE.code=r1.roomCode; LIVE.hostToken=r1.hostToken;
+    const r2 = await jreq('POST',`/api/rooms/${LIVE.code}/join`,{name:'나'});
+    if(r2.error) return r2;
+    LIVE.token=r2.playerToken; LIVE.playerId=r2.playerId;
+    const r3 = await jreq('POST',`/api/rooms/${LIVE.code}/start`,{},hostHdr());
+    if(r3.error) return r3;
+    LIVE.snap=r3.snapshot||r3; LIVE.me=null;
+    LIVE.es = new EventSource(`/api/rooms/${LIVE.code}/stream?token=${encodeURIComponent(LIVE.token)}`);
+    LIVE.es.addEventListener('state', ev=>{
+      let d=null; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+      LIVE.snap=d.snapshot||LIVE.snap; LIVE.me=d.me||LIVE.me;
+      syncConf(LIVE.snap); onLiveEvent(d);
+    });
+    return {roomCode:LIVE.code};
+  },
+  ipoBid: (code,price,qty) =>
+    jreq('POST',`/api/rooms/${LIVE.code}/ipo-bids`,{code,price,qty},playerHdr()),
+  order: (code,side,price,qty,market) =>
+    jreq('POST',`/api/rooms/${LIVE.code}/orders`,
+      {code,side,price:market?'market':price,qty},playerHdr()),
+  async cancel(orderId){
+    const o=(LIVE.me&&LIVE.me.openOrders||[]).find(x=>x.id===orderId);
+    if(!o) return {cancelled:0};
+    return jreq('POST',`/api/rooms/${LIVE.code}/orders/cancel`,{code:o.code,orderId},playerHdr());
+  },
+  end: () => LIVE.code? jreq('POST',`/api/rooms/${LIVE.code}/end`,{},hostHdr()) : {},
+  reset(){ if(LIVE.es){ try{LIVE.es.close();}catch(e){} } LIVE.es=null;
+    LIVE.prevHold=null; for(const k in BONUS) delete BONUS[k];
+    LIVE.code=LIVE.hostToken=LIVE.token=LIVE.playerId=null;
+    LIVE.snap=null; LIVE.me=null; LIVE.seenNews=new Set(); LIVE.lastNotice=0; },
+  snapshot: () => LIVE.snap || EMPTY_SNAP(),
+  me(){
+    const m = LIVE.me || EMPTY_ME();
+    // 서버가 안 주는 bonus 를 붙여서 돌려준다. 화면은 me.holdings[].bonus 만 읽으면 된다.
+    return {...m, holdings:(m.holdings||[]).map(h=>({...h, bonus:BONUS[h.code]||0}))};
+  },
+};
+
+/* ---- 부팅: 같은 출처에 서버가 있으면 실서버로 붙는다 ---- */
+(async function boot(){
+  try{
+    const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(),1500);
+    const r=await fetch('/api/health',{cache:'no-store',signal:ctrl.signal});
+    clearTimeout(t);
+    if(r.ok){ const j=await r.json(); if(j&&j.ok){ LIVE.on=true; API=LiveAPI; } }
+  }catch(e){ /* Artifact 등 서버가 없는 곳 — 더미로 간다 */ }
+  const meta = LIVE.on ? await API.getMeta().catch(()=>null) : null;
+  if(meta && meta.stockPool && meta.stockPool.length){
+    POOL.length=0; for(const s of meta.stockPool) POOL.push(s);
+    U.codes = POOL.map(s=>s.code);
+    if(meta.defaults) CONF={...CONF,...meta.defaults};
+  }
+  const tag=document.getElementById('mode');
+  if(tag) tag.textContent = LIVE.on? '실서버' : '더미 API';
+  render();
+})();
 </script>
