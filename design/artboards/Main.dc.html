@@ -9,7 +9,7 @@
 <helmet>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
   <style>
-    body { margin: 0; background: #0A0C10; color: #EDEFF3; font-family: 'IBM Plex Sans KR', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; background: #0A0C10; color: #EDEFF3; font-family: 'IBM Plex Sans KR', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; word-break: keep-all; }
     a { color: #C6F24E; text-decoration: none; }
     a:hover { color: #DCFF8A; }
     .m { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -37,17 +37,18 @@
     </div>
   </div>
 
+  
   <div style="padding:14px 16px 0;"><div style="background:#12151B;border:1px solid #242A34;border-radius:14px;padding:14px 16px 0;">
       <div style="display:flex;align-items:center;gap:8px;">
         <div style="flex-grow:1;font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;">내 총자산</div>
         <div style="height:22px;padding:0 8px;border-radius:6px;background:rgba(198,242,78,0.10);color:#C6F24E;font-size:11px;font-weight:700;display:flex;align-items:center;" class="m">3위 / 6명</div>
       </div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
-        <div style="font-size:28px;font-weight:700;color:#EDEFF3;letter-spacing:-0.02em;" class="m">2,067,750</div>
+        <div style="font-size:28px;font-weight:700;color:#EDEFF3;letter-spacing:-0.02em;" class="m">1,941,424</div>
         <div style="font-size:14px;color:#8B93A1;">원</div>
       </div>
       <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px;">
-        <div style="font-size:13px;font-weight:600;color:#FF4D5E;" class="m">+267,750 (+14.88%)</div>
+        <div style="font-size:13px;font-weight:600;color:#FF4D5E;" class="m">+141,424 (+7.86%)</div>
         <div style="font-size:11px;color:#5C6472;">누적 투입 1,800,000 대비</div>
       </div>
 
@@ -55,15 +56,15 @@
       <div style="display:flex;flex-wrap:wrap;">
         <div style="width:50%;padding:11px 0;">
           <div style="font-size:11px;color:#5C6472;">현금</div>
-          <div style="font-size:13px;font-weight:600;color:#EDEFF3;margin-top:3px;" class="m">1,215,300</div>
+          <div style="font-size:13px;font-weight:600;color:#EDEFF3;margin-top:3px;" class="m">1,300,398</div>
         </div>
         <div style="width:50%;padding:11px 0;">
           <div style="font-size:11px;color:#5C6472;">묶인 현금</div>
-          <div style="font-size:13px;font-weight:600;color:#8B93A1;margin-top:3px;" class="m">168,000</div>
+          <div style="font-size:13px;font-weight:600;color:#8B93A1;margin-top:3px;" class="m">117,176</div>
         </div>
         <div style="width:50%;padding:11px 0;">
           <div style="font-size:11px;color:#5C6472;">평가금액</div>
-          <div style="font-size:13px;font-weight:600;color:#EDEFF3;margin-top:3px;" class="m">684,450</div>
+          <div style="font-size:13px;font-weight:600;color:#EDEFF3;margin-top:3px;" class="m">523,850</div>
         </div>
         <div style="width:50%;padding:11px 0;">
           <div style="font-size:11px;color:#5C6472;">실현손익</div>
@@ -92,13 +93,13 @@
     <div style="display:flex;align-items:center;gap:8px;">
       <div style="font-size:14px;font-weight:700;color:#EDEFF3;flex-grow:1;">전체 종목 <span style="color:#5C6472;font-weight:500;">10</span></div>
       <div style="display:flex;gap:6px;">
-        <div style="height:28px;padding:0 10px;border-radius:8px;background:#20252E;border:1px solid #2E3540;color:#EDEFF3;font-size:11px;font-weight:600;display:flex;align-items:center;">등락률순</div>
-        <div style="height:28px;padding:0 10px;border-radius:8px;background:transparent;border:1px solid #242A34;color:#5C6472;font-size:11px;font-weight:500;display:flex;align-items:center;">괴리율순</div>
+        <div style="height:36px;padding:0 10px;border-radius:8px;background:#20252E;border:1px solid #2E3540;color:#EDEFF3;font-size:11px;font-weight:600;display:flex;align-items:center;">등락률순</div>
+        <div style="height:36px;padding:0 10px;border-radius:8px;background:transparent;border:1px solid #242A34;color:#5C6472;font-size:11px;font-weight:500;display:flex;align-items:center;">괴리율순</div>
       </div>
     </div>
     <div style="display:flex;align-items:flex-start;gap:6px;margin-top:9px;">
         <div style="flex-shrink:0;margin-top:-1px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2"></path></svg></div>
-        <div style="font-size:11px;color:#5C6472;line-height:1.5;">인플레로 적정가가 분당 5%씩 오릅니다. <b style="color:#8B93A1;">전 종목이 상승이라 등락률만으로는 판단이 안 됩니다</b> — 적정가 대비 괴리율을 같이 보세요.</div>
+        <div style="font-size:11px;color:#5C6472;line-height:1.5;">인플레로 적정가가 분당 0.5%씩 오릅니다. <b style="color:#8B93A1;">등락률은 시초가 대비 얼마나 움직였나, 괴리율은 적정가보다 비싼가</b>를 말합니다 — 둘은 다른 질문입니다.</div>
       </div>
   </div>
 
@@ -107,120 +108,120 @@
       <div style="width:9px;height:9px;border-radius:4.5px;background:#81818c;flex-shrink:0;"></div>
       <div style="flex-grow:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:#EDEFF3;">홍익대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 7,388</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 6,245</div>
       </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:rgba(245,165,36,0.13);color:#F5A524;font-size:10px;font-weight:700;" class="m">거품 +10.3%</div></div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 +4.1%</div></div>
       <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">8,150</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+53.77%</div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
-      <div style="width:9px;height:9px;border-radius:4.5px;background:#7b9dba;flex-shrink:0;"></div>
-      <div style="flex-grow:1;min-width:0;">
-        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">한양대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 2,660</div>
-      </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:rgba(245,165,36,0.13);color:#F5A524;font-size:10px;font-weight:700;" class="m">거품 +7.1%</div></div>
-      <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">2,850</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+52.82%</div>
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">6,500</div>
+        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+22.64%</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
       <div style="width:9px;height:9px;border-radius:4.5px;background:#bf818a;flex-shrink:0;"></div>
       <div style="flex-grow:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:#EDEFF3;">고려대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 5,024</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 4,176</div>
       </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">+4.5%</div></div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 +1.8%</div></div>
       <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">5,250</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+47.47%</div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
-      <div style="width:9px;height:9px;border-radius:4.5px;background:#84b095;flex-shrink:0;"></div>
-      <div style="flex-grow:1;min-width:0;">
-        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">숭실대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 6,206</div>
-      </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−4.9%</div></div>
-      <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">5,900</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+35.63%</div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
-      <div style="width:9px;height:9px;border-radius:4.5px;background:#73b09b;flex-shrink:0;"></div>
-      <div style="flex-grow:1;min-width:0;">
-        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">건국대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 3,251</div>
-      </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−4.0%</div></div>
-      <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">3,120</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+35.06%</div>
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">4,250</div>
+        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+19.38%</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
       <div style="width:9px;height:9px;border-radius:4.5px;background:#8295b6;flex-shrink:0;"></div>
       <div style="flex-grow:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:#EDEFF3;">서울대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 1,773</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 1,374</div>
       </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−6.9%</div></div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:rgba(245,165,36,0.13);color:#F5A524;font-size:11px;font-weight:700;" class="m">거품 +5.5%</div></div>
       <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">1,650</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+33.06%</div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
-      <div style="width:9px;height:9px;border-radius:4.5px;background:#788ca6;flex-shrink:0;"></div>
-      <div style="flex-grow:1;min-width:0;">
-        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">연세대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 3,694</div>
-      </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−5.8%</div></div>
-      <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">3,480</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+29.85%</div>
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">1,450</div>
+        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+16.94%</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
       <div style="width:9px;height:9px;border-radius:4.5px;background:#8aa7c0;flex-shrink:0;"></div>
       <div style="flex-grow:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:#EDEFF3;">경기대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 4,433</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 3,497</div>
       </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−9.3%</div></div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 −5.9%</div></div>
       <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">4,020</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+28.03%</div>
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">3,290</div>
+        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+4.78%</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#7b9dba;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">한양대</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 1,986</div>
+      </div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 −1.8%</div></div>
+      <div style="width:84px;text-align:right;">
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">1,950</div>
+        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+4.56%</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#73b09b;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">건국대</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 2,290</div>
+      </div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 −4.8%</div></div>
+      <div style="width:84px;text-align:right;">
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">2,180</div>
+        <div style="font-size:12px;font-weight:600;color:#4C8DFF;margin-top:3px;" class="m">−5.63%</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
       <div style="width:9px;height:9px;border-radius:4.5px;background:#c08a95;flex-shrink:0;"></div>
       <div style="flex-grow:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:#EDEFF3;">경희대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 2,216</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 1,374</div>
       </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−10.9%</div></div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 +4.4%</div></div>
       <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">1,975</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+27.83%</div>
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">1,435</div>
+        <div style="font-size:12px;font-weight:600;color:#4C8DFF;margin-top:3px;" class="m">−7.12%</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#84b095;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">숭실대</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 3,935</div>
+      </div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 +2.2%</div></div>
+      <div style="width:84px;text-align:right;">
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">4,020</div>
+        <div style="font-size:12px;font-weight:600;color:#4C8DFF;margin-top:3px;" class="m">−7.59%</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
       <div style="width:9px;height:9px;border-radius:4.5px;background:#e7bd79;flex-shrink:0;"></div>
       <div style="flex-grow:1;min-width:0;">
         <div style="font-size:15px;font-weight:600;color:#EDEFF3;">동국대</div>
-        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 1,330</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 796</div>
       </div>
-      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:#20252E;color:#8B93A1;font-size:10px;font-weight:700;" class="m">−10.5%</div></div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:rgba(245,165,36,0.13);color:#F5A524;font-size:11px;font-weight:700;" class="m">거품 +8.0%</div></div>
       <div style="width:84px;text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">1,190</div>
-        <div style="font-size:12px;font-weight:600;color:#FF4D5E;margin-top:3px;" class="m">+20.81%</div>
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">860</div>
+        <div style="font-size:12px;font-weight:600;color:#4C8DFF;margin-top:3px;" class="m">−12.69%</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 16px;border-bottom:1px solid #242A34;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#788ca6;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="font-size:15px;font-weight:600;color:#EDEFF3;">연세대</div>
+        <div style="font-size:11px;color:#5C6472;margin-top:3px;" class="m">적정 2,394</div>
+      </div>
+      <div style="margin-right:2px;"><div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:#20252E;color:#8B93A1;font-size:11px;font-weight:700;" class="m">괴리 −3.5%</div></div>
+      <div style="width:84px;text-align:right;">
+        <div style="font-size:16px;font-weight:700;color:#EDEFF3;" class="m">2,310</div>
+        <div style="font-size:12px;font-weight:600;color:#4C8DFF;margin-top:3px;" class="m">−13.81%</div>
       </div>
     </div>
   </div>
@@ -259,8 +260,8 @@
         <div style="height:19px;padding:0 6px;border-radius:5px;background:#C6F24E;color:#0A0C10;font-size:10px;font-weight:700;display:flex;align-items:center;">나</div>
       </div>
       <div style="text-align:right;">
-        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">2,067,750</div>
-        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:1px;" class="m">+14.88%</div>
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">1,941,424</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:1px;" class="m">+7.86%</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;height:56px;padding:0 16px 0 16px;background:transparent;border-left:none;border-bottom:1px solid #242A34;">

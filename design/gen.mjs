@@ -35,7 +35,7 @@ const CFG = {
   seedMoney: 1_000_000,
   salaryAmount: 100_000,
   salaryIntervalSec: 60,
-  inflationPerMin: 0.05,
+  inflationPerMin: 0.005,
   maxBonusRate: 0.05,
   durationMin: 15,
   ipoSec: 45,
@@ -56,23 +56,26 @@ const tickSize = (p) => (p < 2000 ? 5 : p < 5000 ? 10 : 25);
 const onTick = (p) => p % tickSize(p) === 0;
 
 /* ---------- 종목 (src/config.js STOCK_POOL, 10개 대학) ----------------- */
+const IDIO = { SNU:1.10, YON:0.92, KOR:1.18, HYU:1.06, DGU:0.85,
+               KKU:1.00, HON:1.20, KHU:0.88, KGU:1.12, SSU:0.90 };
+const DRIFT = Math.pow(1 + CFG.inflationPerMin, ELAPSED / 60);   // 전 종목 공통 상승분
 const STOCKS = [
-  { code: 'SNU', name: '서울대', color: '#1b3f7a', init: 1200, open: 1240, fair: 1773, last: 1650, high: 1710, low: 1215, volume: 8430 },
-  { code: 'YON', name: '연세대', color: '#0a2d5e', init: 2500, open: 2680, fair: 3694, last: 3480, high: 3540, low: 2650, volume: 4120 },
-  { code: 'KOR', name: '고려대', color: '#8b1a2b', init: 3400, open: 3560, fair: 5024, last: 5250, high: 5300, low: 3520, volume: 2980 },
-  { code: 'HYU', name: '한양대', color: '#0f4c81', init: 1800, open: 1865, fair: 2660, last: 2850, high: 2900, low: 1840, volume: 6250 },
-  { code: 'DGU', name: '동국대', color: '#d4870c', init: 900, open: 985, fair: 1330, last: 1190, high: 1250, low: 940, volume: 9870 },
-  { code: 'KKU', name: '건국대', color: '#00704a', init: 2200, open: 2310, fair: 3251, last: 3120, high: 3210, low: 2280, volume: 3640 },
-  { code: 'HON', name: '홍익대', color: '#1a1a2e', init: 5000, open: 5300, fair: 7388, last: 8150, high: 8250, low: 5225, volume: 1820 },
-  { code: 'KHU', name: '경희대', color: '#8c2b3f', init: 1500, open: 1545, fair: 2216, last: 1975, high: 2080, low: 1520, volume: 5310 },
-  { code: 'KGU', name: '경기대', color: '#2b5f8c', init: 3000, open: 3140, fair: 4433, last: 4020, high: 4150, low: 3100, volume: 2470 },
-  { code: 'SSU', name: '숭실대', color: '#1f6f3f', init: 4200, open: 4350, fair: 6206, last: 5900, high: 6025, low: 4310, volume: 1960 },
-];
+  { code: 'SNU', name: '서울대', color: '#1b3f7a', init: 1200, open: 1240, last: 1450, high: 1490, low: 1210, volume: 8430 },
+  { code: 'YON', name: '연세대', color: '#0a2d5e', init: 2500, open: 2680, last: 2310, high: 2740, low: 2280, volume: 4120 },
+  { code: 'KOR', name: '고려대', color: '#8b1a2b', init: 3400, open: 3560, last: 4250, high: 4320, low: 3520, volume: 2980 },
+  { code: 'HYU', name: '한양대', color: '#0f4c81', init: 1800, open: 1865, last: 1950, high: 2010, low: 1830, volume: 6250 },
+  { code: 'DGU', name: '동국대', color: '#d4870c', init: 900,  open: 985,  last: 860,  high: 1010, low: 840,  volume: 9870 },
+  { code: 'KKU', name: '건국대', color: '#00704a', init: 2200, open: 2310, last: 2180, high: 2390, low: 2150, volume: 3640 },
+  { code: 'HON', name: '홍익대', color: '#1a1a2e', init: 5000, open: 5300, last: 6500, high: 6600, low: 5225, volume: 1820 },
+  { code: 'KHU', name: '경희대', color: '#8c2b3f', init: 1500, open: 1545, last: 1435, high: 1590, low: 1400, volume: 5310 },
+  { code: 'KGU', name: '경기대', color: '#2b5f8c', init: 3000, open: 3140, last: 3290, high: 3380, low: 3080, volume: 2470 },
+  { code: 'SSU', name: '숭실대', color: '#1f6f3f', init: 4200, open: 4350, last: 4020, high: 4420, low: 3980, volume: 1960 },
+].map((s) => ({ ...s, fair: Math.round(s.init * DRIFT * IDIO[s.code]) }));
 const STOCK_COUNT = STOCKS.length;
 // 발행 계획 수량: 전체 시드머니 × floatCapitalRatio 를 종목 수로 나눠 시가총액 균등
 const CAP_PER_STOCK = (CFG.seedMoney * PLAYERS * CFG.floatCapitalRatio) / STOCK_COUNT;
 for (const s of STOCKS) {
-  s.float = Math.round(CAP_PER_STOCK / s.init / CFG.lotSize) * CFG.lotSize;
+  s.float = Math.max(CFG.lotSize, Math.floor(CAP_PER_STOCK / s.init / CFG.lotSize) * CFG.lotSize);
   s.issued = Math.floor(s.float * Math.pow(1 + CFG.maxBonusRate, SALARY_TICKS));
   s.changePct = (s.last / s.open - 1) * 100;      // 시초가 대비
   s.vsFairPct = (s.last / s.fair - 1) * 100;      // 적정가 대비 괴리율
@@ -106,9 +109,10 @@ rec('00:00', '시작 자금', 0);
 
 // 개장 공모 배정: 서울대 120주 @ 시초가 1,240
 {
-  const qty = 120, price = 1240, amt = qty * price, f = fee(amt);
-  cash -= amt + f; feePaid += f; hold.SNU = qty; boughtQty.SNU = qty; cost.SNU = amt + f;
-  rec('00:00', `개장 공모 배정 · 서울대 ${qty}주 @ ${price}`, -(amt + f));
+  // 서버 _closeIpo 는 공모 배정에 수수료를 걷지 않는다. 정규장 매매에만 붙는다.
+  const qty = 120, price = 1240, amt = qty * price;
+  cash -= amt; hold.SNU = qty; boughtQty.SNU = qty; cost.SNU = amt;
+  rec('00:00', `개장 공모 배정 · 서울대 ${qty}주 @ ${price}`, -amt);
 }
 for (let m = 1; m <= SALARY_TICKS; m++) {
   cash += CFG.salaryAmount; salaryTotal += CFG.salaryAmount;
@@ -141,7 +145,7 @@ for (let m = 1; m <= SALARY_TICKS; m++) {
   }
 }
 // 한양대 100주 @ 2,800 매수 주문 → 40주 즉시 체결(filled), 60주는 호가창에 잔류(resting)
-const ORDER = { code: 'HYU', name: '한양대', side: 'buy', price: 2800, qty: 100, filled: 40, id: 'o812' };
+const ORDER = { code: 'HYU', name: '한양대', side: 'buy', price: 1950, qty: 100, filled: 40, id: 'o812' };
 {
   const fa = ORDER.filled * ORDER.price, ff = fee(fa);
   cash -= fa + ff; feePaid += ff;
@@ -149,7 +153,7 @@ const ORDER = { code: 'HYU', name: '한양대', side: 'buy', price: 2800, qty: 1
   rec('08:02', `한양대 ${ORDER.filled}주 @ ${ORDER.price} 매수 체결`, -(fa + ff));
 }
 const OPEN_ORDER = { ...ORDER, qty: ORDER.qty - ORDER.filled };
-const lockedCash = OPEN_ORDER.price * OPEN_ORDER.qty;
+const lockedCash = Math.ceil(OPEN_ORDER.price * OPEN_ORDER.qty * (1 + CFG.feeRate));
 cash -= lockedCash;
 rec('08:02', `한양대 ${OPEN_ORDER.qty}주 미체결 · 증거금 예치`, -lockedCash);
 
@@ -223,7 +227,7 @@ function page({ w, h, body }) {
 <helmet>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
   <style>
-    body { margin: 0; background: ${T.bg}; color: ${T.text}; font-family: ${T.sans}; -webkit-font-smoothing: antialiased; }
+    body { margin: 0; background: ${T.bg}; color: ${T.text}; font-family: ${T.sans}; -webkit-font-smoothing: antialiased; word-break: keep-all; }
     a { color: ${T.accent}; text-decoration: none; }
     a:hover { color: #DCFF8A; }
     .m { font-family: ${T.mono}; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -278,9 +282,9 @@ const stepperRow = (name, value, sub) => `<div style="display:flex;align-items:c
           ${sub ? `<div style="font-size:11px;color:${T.dim2};margin-top:2px;">${sub}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:${T.surf3};">${icoMinus(T.dim)}</div>
-          <div style="min-width:74px;text-align:center;font-size:16px;font-weight:700;" class="m">${value}</div>
-          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:${T.surf3};">${icoPlus(T.text)}</div>
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:${T.surf3};">${icoMinus(T.dim)}</div>
+          <div style="min-width:70px;text-align:center;font-size:16px;font-weight:700;" class="m">${value}</div>
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:${T.surf3};">${icoPlus(T.text)}</div>
         </div>
       </div>`;
 
@@ -297,7 +301,7 @@ function lighten(hex, amt) {
 const dot = (c, s = 8) => `<div style="width:${s}px;height:${s}px;border-radius:${s / 2}px;background:${lighten(c, 0.45)};flex-shrink:0;"></div>`;
 
 /** 적정가 대비 괴리율 배지 */
-const fairBadge = (v) => `<div style="display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:${v >= BUBBLE_AT ? warnTint : T.surf3};color:${fairCol(v)};font-size:10px;font-weight:700;" class="m">${v >= BUBBLE_AT ? '거품 ' : ''}${pct1(v)}</div>`;
+const fairBadge = (v) => `<div style="display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:${v >= BUBBLE_AT ? warnTint : T.surf3};color:${fairCol(v)};font-size:11px;font-weight:700;" class="m">${v >= BUBBLE_AT ? '거품 ' : '괴리 '}${pct1(v)}</div>`;
 
 const gameHeader = (title, right) => `<div style="height:56px;display:flex;align-items:center;gap:6px;padding:0 16px 0 4px;border-bottom:1px solid ${T.line};">
     <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;">${icoBack()}</div>
@@ -554,14 +558,14 @@ const ipoBody = `<div style="width:390px;min-height:${IPO_H}px;box-sizing:border
     <div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:${T.bg};border:1px solid ${T.line2};border-radius:11px;">
       <div style="font-size:11px;color:${T.dim2};width:44px;">가격</div>
       <div style="flex-grow:1;text-align:right;font-size:17px;font-weight:700;" class="m">${n(MY_BID.price)}</div>
-      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoMinus(T.dim)}</div>
-      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoPlus(T.text)}</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoMinus(T.dim)}</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoPlus(T.text)}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:${T.bg};border:1px solid ${T.line2};border-radius:11px;margin-top:8px;">
       <div style="font-size:11px;color:${T.dim2};width:44px;">수량</div>
       <div style="flex-grow:1;text-align:right;font-size:17px;font-weight:700;" class="m">${MY_BID.qty}</div>
-      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoMinus(T.dim)}</div>
-      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoPlus(T.text)}</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoMinus(T.dim)}</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoPlus(T.text)}</div>
     </div>
 
     <div style="display:flex;align-items:center;gap:8px;margin:14px 2px 8px;">
@@ -584,6 +588,7 @@ fs.writeFileSync(`${OUT}/Ipo.dc.html`, page({ w: 390, h: IPO_H, body: ipoBody })
    4) 전체 시황 — Main.dc.html
    ======================================================================= */
 const MARKET_H = 1790;
+const NEWS_H = 1880;   // 시황 + 뉴스 배너
 
 const bonusQty = Object.keys(hold).reduce((a, c) => a + (hold[c] - boughtQty[c]), 0);
 
@@ -617,7 +622,7 @@ const navItem = (icon, text, on) => `<div style="flex-grow:1;height:56px;display
         <div style="font-size:10px;font-weight:${on ? 700 : 500};color:${on ? T.accent : T.dim2};">${text}</div>
       </div>`;
 
-const sortChip = (t, on) => `<div style="height:28px;padding:0 10px;border-radius:8px;background:${on ? T.surf3 : 'transparent'};border:1px solid ${on ? T.line2 : T.line};color:${on ? T.text : T.dim2};font-size:11px;font-weight:${on ? 600 : 500};display:flex;align-items:center;">${t}</div>`;
+const sortChip = (t, on) => `<div style="height:36px;padding:0 10px;border-radius:8px;background:${on ? T.surf3 : 'transparent'};border:1px solid ${on ? T.line2 : T.line};color:${on ? T.text : T.dim2};font-size:11px;font-weight:${on ? 600 : 500};display:flex;align-items:center;">${t}</div>`;
 
 const sortedStocks = [...STOCKS].sort((a, b) => b.changePct - a.changePct);
 
@@ -683,6 +688,7 @@ const marketBody = `<div style="width:390px;min-height:${MARKET_H}px;box-sizing:
     </div>
   </div>
 
+  <!--NEWS-->
   <div style="padding:14px 16px 0;">${assetCard}</div>
 
   <div style="padding:22px 16px 10px;">
@@ -693,7 +699,7 @@ const marketBody = `<div style="width:390px;min-height:${MARKET_H}px;box-sizing:
         ${sortChip('괴리율순', false)}
       </div>
     </div>
-    ${hint(`인플레로 적정가가 분당 ${CFG.inflationPerMin * 100}%씩 오릅니다. <b style="color:${T.dim};">전 종목이 상승이라 등락률만으로는 판단이 안 됩니다</b> — 적정가 대비 괴리율을 같이 보세요.`)}
+    ${hint(`인플레로 적정가가 분당 ${(CFG.inflationPerMin * 100).toFixed(1)}%씩 오릅니다. <b style="color:${T.dim};">등락률은 시초가 대비 얼마나 움직였나, 괴리율은 적정가보다 비싼가</b>를 말합니다 — 둘은 다른 질문입니다.`)}
   </div>
 
   <div style="border-top:1px solid ${T.line};">
@@ -717,7 +723,7 @@ const marketBody = `<div style="width:390px;min-height:${MARKET_H}px;box-sizing:
   </div>
 
 </div>`;
-fs.writeFileSync(`${OUT}/Main.dc.html`, page({ w: 390, h: MARKET_H, body: marketBody }));
+fs.writeFileSync(`${OUT}/Main.dc.html`, page({ w: 390, h: MARKET_H, body: marketBody.replace('<!--NEWS-->', '') }));
 
 /* =======================================================================
    5·6) 개별 종목 — 호가 탭 / 차트 탭
@@ -730,8 +736,9 @@ const orderFee = fee(orderAmount);
 
 // 서버 depth 배열 — 값이 없는 호가는 아예 오지 않는다(= 사다리에 빈 칸이 생긴다)
 const DEPTH = {
-  asks: [{ p: 2860, q: 120 }, { p: 2870, q: 80 }, { p: 2890, q: 240 }, { p: 2900, q: 60 }, { p: 2930, q: 310 }, { p: 2940, q: 90 }, { p: 2950, q: 150 }],
-  bids: [{ p: 2850, q: 180 }, { p: 2840, q: 260 }, { p: 2830, q: 90 }, { p: 2810, q: 410 }, { p: 2800, q: 120, mine: 60 }, { p: 2790, q: 70 }, { p: 2780, q: 330 }, { p: 2760, q: 150 }],
+  asks: [{ p: 1955, q: 80 }, { p: 1965, q: 240 }, { p: 1970, q: 60 }, { p: 1980, q: 310 }, { p: 1990, q: 90 }, { p: 1995, q: 150 }],
+  bids: [{ p: 1950, q: 60, mine: 60 }, { p: 1945, q: 260 }, { p: 1940, q: 90 }, { p: 1930, q: 410 },
+         { p: 1925, q: 120 }, { p: 1915, q: 70 }, { p: 1910, q: 330 }, { p: 1900, q: 150 }],
 };
 const askTotal = DEPTH.asks.reduce((a, x) => a + x.q, 0);
 const bidTotal = DEPTH.bids.reduce((a, x) => a + x.q, 0);
@@ -741,6 +748,11 @@ for (const x of [...DEPTH.asks, ...DEPTH.bids]) {
   if (x.q % CFG.lotSize !== 0) problems.push(`잔량 ${x.q} 가 lotSize 배수가 아님`);
 }
 if (DEPTH.bids[0].p !== FOCUS.last) problems.push('최우선 매수호가와 현재가가 다름');
+// 서버 orderbook.js: 지정가 매수는 최우선 매도가 지정가 이하일 때만 체결된다.
+if (ORDER.filled > 0 && ORDER.price < FOCUS.last)
+  problems.push(`지정가 ${ORDER.price} 매수가 최우선 매도 위에서 체결될 수 없다`);
+if (DEPTH.asks.some((a) => a.p <= DEPTH.bids[0].p))
+  problems.push('매도호가가 최우선 매수호가 이하 — 교차 상태');
 
 const QTY_W = 127;          // 좌우 잔량 셀 폭 — 같아야 막대 길이를 비교할 수 있다
 const LADDER_STEP = tickSize(FOCUS.last);
@@ -748,7 +760,7 @@ const askLadder = Array.from({ length: 10 }, (_, i) => FOCUS.last + (10 - i) * L
 const bidLadder = Array.from({ length: 10 }, (_, i) => FOCUS.last - i * LADDER_STEP);
 const findQ = (arr, p) => arr.find((x) => x.p === p);
 
-const priceCell = (p, side, best) => `<div style="width:104px;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${best ? upTint : T.surf};border-left:1px solid ${best ? T.up : T.line};border-right:1px solid ${T.line};">
+const priceCell = (p, side, best) => `<div style="width:104px;box-sizing:border-box;height:44px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:${best ? upTint : T.surf};border-left:1px solid ${best ? T.up : T.line};border-right:1px solid ${T.line};">
           <div style="font-size:14px;font-weight:${best ? 700 : 600};color:${side === 'ask' ? T.down : T.up};" class="m">${n(p)}</div>
           <div style="font-size:9px;color:${T.dim2};" class="m">${pct((p / FOCUS.open - 1) * 100)}</div>
         </div>`;
@@ -808,7 +820,7 @@ const stockHeader = (activeTab) => `${gameHeader(`<span style="display:inline-fl
   </div>
 
   <div style="display:flex;gap:4px;margin:0 16px 4px;padding:4px;background:${T.surf};border:1px solid ${T.line};border-radius:12px;">
-    ${['호가', '차트', '체결'].map((t) => `<div style="flex-grow:1;height:40px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:${t === activeTab ? T.surf3 : 'transparent'};color:${t === activeTab ? T.text : T.dim2};font-size:14px;font-weight:${t === activeTab ? 700 : 500};">${t}</div>`).join('\n    ')}
+    ${['호가', '차트', '체결'].map((t) => `<div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:${t === activeTab ? T.surf3 : 'transparent'};color:${t === activeTab ? T.text : T.dim2};font-size:14px;font-weight:${t === activeTab ? 700 : 500};">${t}</div>`).join('\n    ')}
   </div>`;
 
 const positionCard = `<div style="padding:12px 16px 0;">
@@ -825,8 +837,8 @@ const positionCard = `<div style="padding:12px 16px 0;">
     </div>
   </div>`;
 
-const openOrderCard = `<div style="padding:10px 16px 0;">
-    <div style="display:flex;align-items:center;gap:12px;background:${T.surf};border:1px solid ${T.line2};border-radius:12px;padding:12px 12px 12px 16px;">
+const openOrderCard = `<div style="padding:0 0 12px;">
+    <div style="display:flex;align-items:center;gap:12px;background:${T.bg};border:1px solid ${T.line2};border-radius:12px;padding:12px 12px 12px 16px;">
       <div style="flex-grow:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="height:18px;padding:0 6px;border-radius:4px;background:${upTint};color:${T.up};font-size:10px;font-weight:700;display:flex;align-items:center;">매수</div>
@@ -834,11 +846,12 @@ const openOrderCard = `<div style="padding:10px 16px 0;">
         </div>
         <div style="font-size:11px;color:${T.dim2};margin-top:3px;" class="m">100주 중 ${ORDER.filled}주 체결 · ${OPEN_ORDER.qty}주 미체결 · 묶인 현금 ${n(ME.lockedCash)}</div>
       </div>
-      <div style="height:40px;padding:0 14px;display:flex;align-items:center;border-radius:10px;border:1px solid ${T.line2};color:${T.dim};font-size:13px;font-weight:600;flex-shrink:0;">취소</div>
+      <div style="height:44px;padding:0 16px;display:flex;align-items:center;border-radius:10px;border:1px solid ${T.line2};color:${T.dim};font-size:13px;font-weight:600;flex-shrink:0;">취소</div>
     </div>
   </div>`;
 
 const orderPanel = `<div style="border-top:1px solid ${T.line};background:${T.surf};padding:12px 16px 18px;margin-top:14px;">
+    ${openOrderCard}
     <div style="display:flex;gap:4px;padding:4px;background:${T.bg};border:1px solid ${T.line};border-radius:11px;margin-bottom:12px;">
       <div style="flex-grow:1;height:38px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};color:${T.text};font-size:13px;font-weight:700;">지정가</div>
       <div style="flex-grow:1;height:38px;display:flex;align-items:center;justify-content:center;border-radius:8px;color:${T.dim2};font-size:13px;font-weight:500;">시장가</div>
@@ -847,12 +860,12 @@ const orderPanel = `<div style="border-top:1px solid ${T.line};background:${T.su
     ${[['가격', n(FOCUS.last)], ['수량', String(ORDER_QTY_INPUT)]].map(([k, v], i) => `<div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:${T.bg};border:1px solid ${T.line2};border-radius:11px;${i ? 'margin-top:8px;' : ''}">
       <div style="font-size:11px;color:${T.dim2};width:32px;">${k}</div>
       <div style="flex-grow:1;text-align:right;font-size:17px;font-weight:700;" class="m">${v}</div>
-      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoMinus(T.dim)}</div>
-      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoPlus(T.text)}</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoMinus(T.dim)}</div>
+      <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:${T.surf3};">${icoPlus(T.text)}</div>
     </div>`).join('\n    ')}
 
     <div style="display:flex;gap:6px;margin-top:8px;">
-      ${['10%', '25%', '50%', `최대 ${maxBuyQty}주`].map((t) => `<div style="height:32px;flex-grow:1;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid ${T.line};color:${T.dim};font-size:11px;font-weight:600;" class="m">${t}</div>`).join('\n      ')}
+      ${['10%', '25%', '50%', `최대 ${maxBuyQty}주`].map((t) => `<div style="height:44px;flex-grow:1;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid ${T.line};color:${T.dim};font-size:11px;font-weight:600;" class="m">${t}</div>`).join('\n      ')}
     </div>
 
     ${[['주문금액', n(orderAmount) + '원'], ['수수료 ' + (CFG.feeRate * 100).toFixed(2) + '%', n(orderFee) + '원'], ['주문가능', `현금 ${n(ME.cash)}원 · 최대 ${maxBuyQty}주`]]
@@ -873,8 +886,8 @@ const stockBody = `<div style="width:390px;min-height:${STOCK_H}px;box-sizing:bo
   ${stockHeader('호가')}
 
   <div style="display:flex;align-items:center;height:34px;padding:8px 16px 0;">
-    <div style="width:${QTY_W - 12}px;text-align:right;font-size:10px;color:${T.dim2};font-weight:600;">매도 잔량</div>
-    <div style="width:104px;text-align:center;font-size:10px;color:${T.dim2};font-weight:600;">호가 10단계</div>
+    <div style="width:${QTY_W}px;padding-right:12px;box-sizing:border-box;text-align:right;font-size:10px;color:${T.dim2};font-weight:600;">매도 잔량</div>
+    <div style="width:104px;box-sizing:border-box;text-align:center;font-size:10px;color:${T.dim2};font-weight:600;">호가 10단계</div>
     <div style="width:${QTY_W}px;padding-left:12px;box-sizing:border-box;font-size:10px;color:${T.dim2};font-weight:600;">매수 잔량</div>
   </div>
 
@@ -894,7 +907,6 @@ const stockBody = `<div style="width:390px;min-height:${STOCK_H}px;box-sizing:bo
 
   <div style="padding:0 16px;">${hint('빈 칸은 그 가격에 주문이 없다는 뜻입니다. 서버 depth 는 값이 있는 호가만 보내고, 매도 호가는 전체 시간의 약 20% 동안 비어 있습니다 — 정상입니다.')}</div>
 
-  ${openOrderCard}
   ${positionCard}
   <div style="flex-grow:1;"></div>
   ${orderPanel}
@@ -905,7 +917,7 @@ fs.writeFileSync(`${OUT}/Stock.dc.html`, page({ w: 390, h: STOCK_H, body: stockB
 const CW = 358, CHH = 200;
 const rndc = mulberry32(77031);
 const pts = [];
-const anchors = [[0, 1865], [90, 1980], [170, 2120], [240, 2050], [310, 2380], [380, 2620], [430, 2900], [482, FOCUS.last]];
+const anchors = [[0, 1865], [90, 1905], [170, 1955], [240, 1920], [310, 1985], [380, 1970], [430, 2005], [482, FOCUS.last]];
 for (let t = 0; t <= ELAPSED; t += 4) {
   let a = anchors[0], b = anchors[anchors.length - 1];
   for (let k = 0; k < anchors.length - 1; k++) if (t >= anchors[k][0] && t <= anchors[k + 1][0]) { a = anchors[k]; b = anchors[k + 1]; break; }
@@ -922,7 +934,7 @@ const py = (v) => (yHi - v) / (yHi - yLo) * CHH;
 const linePts = pts.map((p) => `${px(p.t).toFixed(1)},${py(p.price).toFixed(1)}`).join(' ');
 const fairPts = pts.map((p) => `${px(p.t).toFixed(1)},${py(fairAt(p.t)).toFixed(1)}`).join(' ');
 
-const CHART_H = 1465;
+const CHART_H = 1570;
 const chartBody = `<div style="width:390px;min-height:${CHART_H}px;box-sizing:border-box;background:${T.bg};display:flex;flex-direction:column;">
   ${stockHeader('차트')}
 
@@ -955,7 +967,7 @@ const chartBody = `<div style="width:390px;min-height:${CHART_H}px;box-sizing:bo
     <div style="font-size:11px;color:${T.dim2};" class="m">최대 40건</div>
   </div>
   <div style="border-top:1px solid ${T.line};">
-    ${[[482, 2850, 40, 'buy'], [479, 2850, 20, 'buy'], [476, 2840, 60, 'sell'], [471, 2840, 10, 'sell'], [468, 2850, 90, 'buy'], [463, 2860, 30, 'buy'], [459, 2850, 50, 'sell'], [452, 2840, 20, 'sell']]
+    ${[[482, 1950, 40, 'buy'], [479, 1945, 20, 'sell'], [476, 1945, 60, 'sell'], [471, 1950, 10, 'buy'], [468, 1955, 90, 'buy'], [463, 1950, 30, 'buy'], [459, 1945, 50, 'sell'], [452, 1940, 20, 'sell']]
       .map(([t, p, q, side]) => `<div style="display:flex;align-items:center;gap:12px;height:40px;padding:0 16px;border-bottom:1px solid ${T.line};">
       <div style="width:52px;font-size:11px;color:${T.dim2};" class="m">+${mmss(t)}</div>
       <div style="flex-grow:1;font-size:13px;font-weight:600;color:${side === 'buy' ? T.up : T.down};" class="m">${n(p)}</div>
@@ -977,9 +989,10 @@ const BONUS_AT_LAST_TICK = lastBonus.map((b) => ({ name: byCode[b.code].name, ad
 const FILL = { qty: ORDER.filled, price: ORDER.price, amount: ORDER.filled * ORDER.price };
 FILL.fee = fee(FILL.amount);
 
+const PANEL_H = 537;        // 주문 패널 실측 높이. 토스트는 이 위에만 뜬다 — 취소 버튼을 덮으면 안 된다.
 const toast = (bottom, accentBorder, inner) => `<div style="position:absolute;left:16px;bottom:${bottom}px;width:358px;box-sizing:border-box;background:${T.surf2};border:1px solid ${accentBorder};border-radius:16px;padding:14px 16px;box-shadow:0 18px 44px rgba(0,0,0,0.55);">${inner}</div>`;
 
-const fillToast = toast(455, 'rgba(255,77,94,0.35)', `
+const fillToast = toast(PANEL_H + 12, 'rgba(255,77,94,0.35)', `
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="width:34px;height:34px;flex-shrink:0;border-radius:10px;background:${upTint};display:flex;align-items:center;justify-content:center;">${icoCheck(T.up, 18)}</div>
       <div style="flex-grow:1;min-width:0;">
@@ -989,7 +1002,7 @@ const fillToast = toast(455, 'rgba(255,77,94,0.35)', `
       <div style="font-size:17px;font-weight:700;color:${T.up};" class="m">${signed(-(FILL.amount + FILL.fee))}</div>
     </div>`);
 
-const salaryToast = toast(537, 'rgba(198,242,78,0.35)', `
+const salaryToast = toast(PANEL_H + 94, 'rgba(198,242,78,0.35)', `
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="width:34px;height:34px;flex-shrink:0;border-radius:10px;background:${accTint};display:flex;align-items:center;justify-content:center;">${icoWallet(T.accent, 19)}</div>
       <div style="flex-grow:1;min-width:0;">
@@ -1002,7 +1015,7 @@ const salaryToast = toast(537, 'rgba(198,242,78,0.35)', `
     <div style="display:flex;align-items:center;gap:8px;">
       <div style="flex-shrink:0;">${icoGift(T.accent, 16)}</div>
       <div style="flex-grow:1;font-size:11px;color:${T.dim2};">무상증자 ${CFG.maxBonusRate * 100}%</div>
-      <div style="font-size:13px;font-weight:700;color:${T.accent};white-space:nowrap;" class="m">${BONUS_AT_LAST_TICK.map((b) => `${b.name} +${b.add}`).join(' · ')}</div>
+      <div style="font-size:13px;font-weight:700;color:${T.accent};text-align:right;line-height:1.4;" class="m">${BONUS_AT_LAST_TICK.map((b) => `${b.name} +${b.add}`).join(' · ')}</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
       <div style="flex-grow:1;font-size:11px;color:${T.dim2};">인플레는 현금을 깎지 않습니다 — 적정가가 ${CFG.inflationPerMin * 100}% 올랐습니다</div>
@@ -1024,49 +1037,50 @@ fs.writeFileSync(`${OUT}/Notice.dc.html`, page({
    8) 돌발 뉴스 팝업 — News.dc.html  (전체 시황 위 오버레이)
    ======================================================================= */
 const NEWS_STOCK = byCode.KHU;
-const newsModal = `<div style="position:absolute;left:0;top:0;width:390px;height:${MARKET_H}px;background:rgba(4,6,9,0.80);"></div>
-  <div style="position:absolute;left:16px;top:210px;width:358px;box-sizing:border-box;background:${T.surf};border:1px solid ${T.line2};border-radius:20px;padding:20px;box-shadow:0 28px 70px rgba(0,0,0,0.65);">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <div style="display:flex;align-items:center;gap:5px;height:24px;padding:0 9px 0 7px;border-radius:7px;background:${upTint};">
-        ${icoBolt(T.up, 14)}
-        <div style="font-size:11px;font-weight:700;color:${T.up};letter-spacing:0.04em;">돌발 뉴스</div>
-      </div>
-      <div style="flex-grow:1;"></div>
-      <div style="font-size:11px;color:${T.dim2};" class="m">${clock(REMAIN)} 남음</div>
-    </div>
+const rt = (p) => Math.round(p / tickSize(p)) * tickSize(p);
+const NEWS_BUY = rt(NEWS_STOCK.last * 1.02), NEWS_SELL = rt(NEWS_STOCK.last * 0.98);
+const NEWS_HEADLINE = `${NEWS_STOCK.name} 목표가 하향 리포트 발간`;   // src/news.js NEGATIVE 템플릿
 
-    <div style="font-size:20px;font-weight:700;color:${T.text};line-height:1.4;margin-top:14px;letter-spacing:-0.01em;text-wrap:pretty;">${NEWS_STOCK.name}, 내년 신입생 정원 대폭 확대 확정</div>
-
-    <div style="display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px 14px;background:${T.bg};border:1px solid ${T.line};border-radius:12px;">
-      ${dot(NEWS_STOCK.color, 9)}
-      <div style="flex-grow:1;min-width:0;">
-        <div style="font-size:14px;font-weight:600;color:${T.text};">${NEWS_STOCK.name}</div>
-        <div style="margin-top:4px;">${fairBadge(NEWS_STOCK.vsFairPct)}</div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:16px;font-weight:700;color:${T.text};" class="m">${n(NEWS_STOCK.last)}</div>
-        <div style="font-size:12px;font-weight:600;color:${col(NEWS_STOCK.changePct)};margin-top:2px;" class="m">${pct(NEWS_STOCK.changePct)}</div>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:10px;margin-top:16px;">
-      <div style="width:90px;height:50px;display:flex;align-items:center;justify-content:center;border-radius:13px;border:1px solid ${T.line2};color:${T.dim};font-size:15px;font-weight:600;">닫기</div>
-      <div style="flex-grow:1;height:50px;display:flex;align-items:center;justify-content:center;border-radius:13px;background:${T.accent};color:${T.ink};font-size:15px;font-weight:700;">${NEWS_STOCK.name} 보러가기</div>
-    </div>
-
-    <div style="display:flex;align-items:center;gap:8px;margin-top:14px;">
-      <div style="flex-grow:1;height:3px;border-radius:2px;background:${T.surf3};display:flex;">
-        <div style="width:62%;background:${T.dim2};border-radius:2px;"></div>
-      </div>
-      <div style="font-size:10px;color:${T.dim2};" class="m">3초 후 닫힘</div>
+/* 배너 — 화면을 막지 않는다. 판당 약 12건이라 모달은 쓸 수 없다. */
+const newsBanner = `<div style="padding:12px 16px 0;">
+    <div style="display:flex;align-items:center;gap:9px;min-height:44px;padding:11px 12px;box-sizing:border-box;
+      border-radius:11px;background:${warnTint};border:1px solid rgba(245,165,36,0.3);">
+      ${icoBolt(T.warn, 15)}
+      <div style="flex-grow:1;font-size:12px;font-weight:600;line-height:1.4;">${NEWS_HEADLINE}</div>
+      <div style="font-size:11px;color:${T.dim2};flex-shrink:0;" class="m">62초</div>
     </div>
   </div>`;
 
+/* 토스트 — 뜬 순간에만. 즉시 체결되는 주문 버튼은 편의가 아니라 밸런스다
+   (서버 실측: 지정가를 현재가에 걸면 15.1등, 두 호가 위로 지르면 5.3등). */
+const newsToast = `<div style="position:absolute;left:16px;bottom:24px;width:358px;box-sizing:border-box;
+    background:${T.surf2};border:1px solid ${T.line2};border-radius:16px;padding:14px 16px;
+    box-shadow:0 18px 44px rgba(0,0,0,0.55);">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="display:flex;align-items:center;gap:5px;height:22px;padding:0 8px 0 6px;border-radius:6px;background:${warnTint};">
+        ${icoBolt(T.warn, 13)}<div style="font-size:10px;font-weight:700;color:${T.warn};letter-spacing:0.04em;">돌발 뉴스</div>
+      </div>
+      ${dot(NEWS_STOCK.color, 8)}
+      <div style="font-size:12px;color:${T.dim};">${NEWS_STOCK.name}</div>
+      <div style="flex-grow:1;"></div>
+      <div style="font-size:12px;font-weight:700;" class="m">${n(NEWS_STOCK.last)}</div>
+      ${fairBadge(NEWS_STOCK.vsFairPct)}
+    </div>
+    <div style="font-size:15px;font-weight:700;line-height:1.4;margin-top:10px;text-wrap:pretty;">${NEWS_HEADLINE}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <div style="flex-grow:1;height:46px;display:flex;align-items:center;justify-content:center;border-radius:11px;
+        background:${downTint};border:1px solid ${T.down};color:${T.down};font-size:14px;font-weight:700;" class="m">바로 매도 ${n(NEWS_SELL)}</div>
+      <div style="flex-grow:1;height:46px;display:flex;align-items:center;justify-content:center;border-radius:11px;
+        background:${T.up};color:#FFFFFF;font-size:14px;font-weight:700;" class="m">바로 매수 ${n(NEWS_BUY)}</div>
+    </div>
+    <div style="font-size:10px;color:${T.dim2};margin-top:8px;line-height:1.5;">한두 호가 위아래로 질러야 즉시 체결됩니다. 지정가를 현재가에 걸면 현금이 묶인 채 밀립니다. 방향은 헤드라인으로 판단하세요.</div>
+  </div>`;
+
 fs.writeFileSync(`${OUT}/News.dc.html`, page({
-  w: 390, h: MARKET_H,
-  body: `<div style="position:relative;width:390px;height:${MARKET_H}px;overflow:hidden;">
-  ${marketBody}
-  ${newsModal}
+  w: 390, h: NEWS_H,
+  body: `<div style="position:relative;width:390px;height:${NEWS_H}px;overflow:hidden;">
+  ${marketBody.replace('<!--NEWS-->', newsBanner)}
+  ${newsToast}
 </div>`,
 }));
 
@@ -1161,18 +1175,18 @@ const canvas = {
     { file: 'Stock.dc.html', title: '5 · 개별 종목 · 호가', x: 510, y: R2, w: 390, h: STOCK_H },
     { file: 'Chart.dc.html', title: '6 · 개별 종목 · 차트', x: 1020, y: R2, w: 390, h: CHART_H },
     { file: 'Notice.dc.html', title: '7 · 월급·증자·체결 팝업', x: 0, y: R3, w: 390, h: STOCK_H },
-    { file: 'News.dc.html', title: '8 · 돌발 뉴스 팝업', x: 510, y: R3, w: 390, h: MARKET_H },
+    { file: 'News.dc.html', title: '8 · 돌발 뉴스', x: 510, y: R3, w: 390, h: NEWS_H },
     { file: 'Result.dc.html', title: '9 · 결과', x: 1020, y: R3, w: 390, h: RESULT_H },
   ],
   annotations: [
     { id: 'note-flow1', x: 0, y: R1 - 200, w: 390, text: '방장이 10개 대학 중 참여 종목과 규칙을 정한다.\n종목 목록은 GET /api/meta 의 stockPool 을 그대로 쓴다 — 화면에 하드코딩하지 않는다.' },
     { id: 'note-flow2', x: 510, y: R1 - 200, w: 390, text: '참가코드 6자로 사람이 들어온다. 시작하면 난입 불가(409 ALREADY_STARTED).\n봇은 방을 만들 때 정한 수만큼 자동으로 참가한다.' },
     { id: 'note-flow3', x: 1020, y: R1 - 200, w: 390, text: '전원 주식 0주로 시작한다. 45초 안에 청약하지 않으면 끝까지 0주.\n무상증자를 한 주도 못 받아 수익률이 정확히 0%로 고정된다 — 이 화면의 경고가 게임의 승패를 가른다.' },
-    { id: 'note-flow4', x: 0, y: R2 - 200, w: 390, text: '인플레가 적정가를 분당 5% 올리므로 전 종목이 상승한다.\n등락률만으로는 판단이 안 되고, 적정가 대비 괴리율(vsFairPct)이 실제 신호다.' },
+    { id: 'note-flow4', x: 0, y: R2 - 200, w: 390, text: '인플레는 분당 0.5%다(5%에서 낮춰짐). 그래서 오르는 종목과 내리는 종목이 갈린다.\n등락률은 시초가 대비 성과, 괴리율은 적정가 대비 고평가/저평가 — 다른 질문이다. 둘 다 보여준다.' },
     { id: 'note-flow5', x: 510, y: R2 - 200, w: 390, text: '호가 10단계. 서버 depth 는 값이 있는 호가만 보내므로 사다리에 빈 칸이 생긴다.\n매도 호가는 전체 시간의 약 20% 동안 비어 있다 — 빈 상태가 정상이다.' },
     { id: 'note-flow6', x: 1020, y: R2 - 200, w: 390, text: 'GET /chart 의 history 를 체결가·적정가 두 선으로 그린다.\n두 선의 간격이 곧 거품의 크기다.' },
-    { id: 'note-flow7', x: 0, y: R3 - 200, w: 390, text: '토스트는 아래에서 쌓인다. 위가 오래된 것(월급·증자), 아래가 최신(체결).\n둘 다 딤 없이 거래를 막지 않는다. me.newFills 는 직전 전송 이후 신규분만 오므로 그대로 띄우면 중복이 없다.' },
-    { id: 'note-flow8', x: 510, y: R3 - 200, w: 390, text: '돌발 뉴스만 딤 + 모달로 화면을 막는다. 판당 2~3회뿐이고 즉시 반응해야 하므로.\n※ 서버에 아직 없는 기능이다 — notices 에 news kind 와 해당 종목 fair 충격 이벤트가 필요하다.' },
+    { id: 'note-flow7', x: 0, y: R3 - 200, w: 390, text: '토스트는 주문 패널 위에만 쌓는다. 미체결 주문과 취소 버튼은 패널 안으로 옮겨 절대 가려지지 않게 했다.\nme.newFills 는 직전 전송 이후 신규분만 오므로 그대로 띄우면 중복이 없다.\n무상증자 종목별 수량은 서버가 주지 않는다 — 보유 증가분에서 체결분을 뺀 값으로 화면이 역산한다.' },
+    { id: 'note-flow8', x: 510, y: R3 - 200, w: 390, text: '돌발 뉴스는 판당 약 12건이다. 화면을 막는 모달은 쓸 수 없어 배너 + 토스트로 알린다.\n토스트의 즉시 체결 버튼은 밸런스다 — 지정가를 현재가에 걸면 15.1등, 두 호가 위로 지르면 5.3등(서버 실측).\n방향(sign·impactPct)은 서버가 주지만 화면에 쓰지 않는다. 헤드라인으로 판단하는 게 설계 의도다.' },
     { id: 'note-flow9', x: 1020, y: R3 - 200, w: 390, text: '시상은 humanRanking(봇 제외)으로 한다.\n최하위가 정확히 0%인 것이 이 게임의 성질이다 — 인플레가 현금을 깎지 않으므로 잃지는 않지만, 아무것도 안 하면 전원에게 뒤처진다.' },
   ],
   launch: { view: 'canvas' },
