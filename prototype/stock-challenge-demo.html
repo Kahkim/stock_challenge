@@ -1,5 +1,4 @@
-<title>모의주식 챌린지</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230A0C10'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%23C6F24E' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Stock Challenge</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
   :root{
@@ -91,221 +90,388 @@
 <div class="toastwrap" id="toasts"></div>
 <div id="modal"></div>
 
-
 <script>
 /* ============================================================================
-   서버 클라이언트
-   프로토타입의 더미 엔진이 있던 자리다. docs/API.md 의 계약을 그대로 호출하고,
-   화면 코드는 S.snap(공개 스냅샷) / S.me(내 정보) 두 개만 읽는다.
+   더미 API — 서버(claude/dreamy-knuth-bgjjrp) 응답 모양을 그대로 흉내 낸다.
+   화면은 API.snapshot() / API.me() 만 읽으므로, 진짜 서버로 바꿀 때는
+   이 블록만 fetch + EventSource 로 갈아끼우면 된다.  (SWAP POINT 주석 참고)
    ========================================================================= */
-const LSK = 'stock-challenge:';
-function lsGet(k,d){ try{const v=localStorage.getItem(LSK+k); return v===null?d:JSON.parse(v);}catch(e){return d;} }
-function lsSet(k,v){ try{localStorage.setItem(LSK+k,JSON.stringify(v));}catch(e){} }
-function lsDel(k){ try{localStorage.removeItem(LSK+k);}catch(e){} }
-
-const S = {
-  pool:[], defaults:{},
-  tickTable:[{under:2000,tick:5},{under:5000,tick:10},{under:null,tick:25}],
-  roomCode:null, title:'', hostToken:null, playerToken:null, playerId:null, myName:'',
-  deviceId:null,
-  snap:null, me:null, lobby:null, result:null,
-  es:null, stream:'idle',        // idle | connecting | live | lost
-  fresh:true,                    // 연결 직후 1회. 밀린 체결·뉴스를 토스트로 쏟지 않는다
-  myIpoBids:{},                  // 서버는 내 청약 내역을 따로 주지 않아 화면이 집계한다
-  chart:{code:null, rows:[], at:0},
-  seenNews:new Set(), seenNotice:0,
-  booted:false,
-};
-
-S.deviceId = lsGet('device',null);
-if(!S.deviceId){ S.deviceId='d'+Math.random().toString(36).slice(2)+Date.now().toString(36); lsSet('device',S.deviceId); }
-
-/* 설정값은 방마다 다르다. 스냅샷 → 로비 → /api/meta 기본값 순으로 본다.
-   화면이 CFG.lotSize 처럼 읽으면 항상 지금 방의 값이 나온다. */
-function cfgv(k,d){
-  if(S.snap&&S.snap.config&&S.snap.config[k]!==undefined) return S.snap.config[k];
-  if(S.lobby&&S.lobby.config&&S.lobby.config[k]!==undefined) return S.lobby.config[k];
-  if(S.defaults&&S.defaults[k]!==undefined) return S.defaults[k];
-  return d;
-}
 const CFG = {
-  get lotSize(){return cfgv('lotSize',10);},
-  get feeRate(){return cfgv('feeRate',0.0015);},
-  get seedMoney(){return cfgv('seedMoney',1000000);},
-  get salaryAmount(){return cfgv('salaryAmount',100000);},
-  get salaryIntervalSec(){return cfgv('salaryIntervalSec',60);},
-  get inflationPerMin(){return cfgv('inflationPerMin',0.005);},
-  get maxBonusRate(){return cfgv('maxBonusRate',0.05);},
-  get durationMin(){return cfgv('durationMin',15);},
-  get ipoSec(){return cfgv('ipoSec',45);},
+  seedMoney:1000000, salaryAmount:100000, salaryIntervalSec:60, inflationPerMin:0.005,
+  maxBonusRate:0.05, idioVolatility:0.30, durationMin:15, ipoSec:45, tickMs:250,
+  lotSize:10, feeRate:0.0015, floatCapitalRatio:0.60, botCount:30,
+  botExcludeFromRanking:true, botActionRate:0.035, makerSpread:0.006, lookbackSec:120,
+  botMix:{trend:.60, maker:.20, noise:.15, contra:.03, value:.02},
+  news:{enabled:true, intervalSec:70, maxActive:3, positiveRatio:0.5, impact:0.07,
+        strength:0.06, negativeMultiplier:4.5, reactionSec:40, lifeSec:90},
+};
+const NEWS_POS=['{n} 대량 매수 유입 — 매도 호가 공백','{n} 동문 매수세 결집','{n} 신고가 경신 — 추격 매수 확산',
+  '{n} 기관 순매수 전환','{n} 유통 물량 급감 — 품절주 조짐','{n} 목표가 상향 리포트 발간',
+  '{n} 거래량 폭증 — 상승 탄력 확대','{n} 저평가 매력 부각','{n} 응원단 출정 — 개인 매수 유입','{n} 대규모 단체 매수 소문'];
+const NEWS_NEG=['{n} 차익실현 매물 출회','{n} 대량 매도 물량 감지','{n} 투자심리 위축 — 매수 관망',
+  '{n} 고평가 부담 확대','{n} 목표가 하향 리포트 발간','{n} 거래량 급감 — 매수세 실종',
+  '{n} 단기 급등 피로 누적','{n} 손절 물량 확산','{n} 상승분 반납 — 눈치보기 장세','{n} 대기 매물 부담'];
+const POOL = [
+  {code:'SNU',name:'서울대',initialPrice:1200,color:'#1b3f7a'},
+  {code:'YON',name:'연세대',initialPrice:2500,color:'#0a2d5e'},
+  {code:'KOR',name:'고려대',initialPrice:3400,color:'#8b1a2b'},
+  {code:'HYU',name:'한양대',initialPrice:1800,color:'#0f4c81'},
+  {code:'DGU',name:'동국대',initialPrice:900, color:'#d4870c'},
+  {code:'KKU',name:'건국대',initialPrice:2200,color:'#00704a'},
+  {code:'HON',name:'홍익대',initialPrice:5000,color:'#1a1a2e'},
+  {code:'KHU',name:'경희대',initialPrice:1500,color:'#8c2b3f'},
+  {code:'KGU',name:'경기대',initialPrice:3000,color:'#2b5f8c'},
+  {code:'SSU',name:'숭실대',initialPrice:4200,color:'#1f6f3f'},
+];
+const FRIENDS = ['차트왕','학교사랑','눈물의손절','뒷북러','가만히있기'];
+
+const tickSize = p => p<2000?5:p<5000?10:25;
+const roundTick = p => { const t=tickSize(p); return Math.max(t, Math.round(p/t)*t); };
+const roundLot  = q => Math.max(0, Math.round(q/CFG.lotSize)*CFG.lotSize);
+const floorLot  = q => Math.max(0, Math.floor(q/CFG.lotSize)*CFG.lotSize);
+const fee = a => Math.round(a*CFG.feeRate);
+let _s=1; const rnd=()=>{_s=(_s*1664525+1013904223)>>>0; return _s/4294967296;};
+const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+const pick = a => a[Math.floor(rnd()*a.length)];
+
+const G = {
+  phase:'lobby', cfg:{...CFG}, speed:1, elapsed:0, ipoElapsed:0, seq:0,
+  stocks:[], players:[], me:null, notices:[], tape:[], news:[], newsLog:[], salaryCount:0, endedAt:null,
 };
 
-/* 호가 단위표는 /api/meta 에서 받는다 — 서버와 어긋나지 않게 */
-const tickSize = p => { for(const r of S.tickTable) if(r.under===null||p<r.under) return r.tick; return 25; };
-const roundTick = p => { const t=tickSize(p); return Math.max(t,Math.round(p/t)*t); };
-const floorLot  = q => { const l=CFG.lotSize; return Math.max(0,Math.floor(q/l)*l); };
-
-const stocks  = () => (S.snap&&S.snap.stocks)||[];
-const stockOf = c => stocks().find(s=>s.code===c)||null;
-const isHost  = () => !!S.hostToken;
-/* 월급 횟수와 다음 지급까지 남은 시간. 서버는 공모가 끝난 뒤부터 센다(_applySalary). */
-const paidSec = () => S.snap? Math.max(0, S.snap.elapsedSec-CFG.ipoSec) : 0;
-const salaryCount = () => { const iv=CFG.salaryIntervalSec; return iv>0? Math.floor(paidSec()/iv) : 0; };
-const nextSalarySec = () => { const iv=CFG.salaryIntervalSec; return iv>0? iv-(paidSec()%iv) : 0; };
-
-const EMPTY_ME = {id:null,name:'',isBot:false,rank:null,rankTotal:0,cash:0,lockedCash:0,
-  nav:0,invested:1,salaryTotal:0,realized:0,holdings:[],openOrders:[],tradable:[],newFills:[]};
-
-/* ---- HTTP ---------------------------------------------------------------
-   오류는 서버가 주는 {code,message} 를 그대로 던진다. 화면은 toastErr 로 받는다. */
-async function api(method,path,body){
-  const h={};
-  if(body!==undefined) h['Content-Type']='application/json';
-  if(S.playerToken) h['X-Player-Token']=S.playerToken;
-  if(S.hostToken)   h['X-Host-Token']=S.hostToken;
-  let r;
-  try{ r=await fetch(path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body)}); }
-  catch(e){ throw {code:'NETWORK',message:'서버에 연결할 수 없습니다'}; }
-  const data=await r.json().catch(()=>null);
-  if(!r.ok) throw (data&&data.error)||{code:'HTTP_'+r.status,message:'요청이 실패했습니다'};
-  return data;
-}
-const R = p => '/api/rooms/'+encodeURIComponent(S.roomCode)+p;
-
-/* ---- SSE ---------------------------------------------------------------- */
-function closeStream(){ if(S.es){S.es.close(); S.es=null;} S.stream='idle'; }
-function openStream(){
-  closeStream();
-  S.stream='connecting'; S.fresh=true;
-  const q = S.playerToken? '?token='+encodeURIComponent(S.playerToken) : '';
-  const es = new EventSource(R('/stream')+q);
-  S.es = es;
-  es.addEventListener('state',ev=>{
-    let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
-    S.stream='live';
-    applyState(d.snapshot, d.me||null);
+function makeStocks(codes){
+  const totalSeed = G.cfg.seedMoney * (G.players.length || 1);
+  const cap = totalSeed * G.cfg.floatCapitalRatio / codes.length;
+  return codes.map(c=>{
+    const p = POOL.find(x=>x.code===c);
+    return {...p, fair:p.initialPrice, last:p.initialPrice, open:p.initialPrice,
+      high:p.initialPrice, low:p.initialPrice, volume:0,
+      float:roundLot(cap/p.initialPrice)||CFG.lotSize, issued:0,
+      bids:[], asks:[], history:[], ipoBids:[]};
   });
-  // EventSource 는 끊기면 알아서 다시 붙는다. 다시 붙으면 서버가 체결 커서를 0 부터
-  // 다시 세서 지난 체결이 한꺼번에 온다 — 그래서 재연결 직후 한 번은 토스트를 건너뛴다.
-  es.onerror = ()=>{ if(S.stream!=='connecting') S.stream='lost'; S.fresh=true; render(); };
+}
+function makePlayers(){
+  const arr=[{id:'me',name:'나',isBot:false,human:true}];
+  FRIENDS.forEach((n,i)=>arr.push({id:'f'+i,name:n,isBot:false,human:true,sim:true}));
+  const types=[]; for(const [t,w] of Object.entries(G.cfg.botMix))
+    for(let i=0;i<Math.round(w*G.cfg.botCount);i++) types.push(t);
+  while(types.length<G.cfg.botCount) types.push('trend');
+  for(let i=0;i<G.cfg.botCount;i++)
+    arr.push({id:'b'+i,name:'봇'+(i+1),isBot:true,human:false,type:types[i]});
+  return arr.map(p=>({...p, type:p.type||pick(['trend','trend','maker','noise','value','contra']),
+    cash:G.cfg.seedMoney, holdings:{}, cost:{}, bonus:{}, realized:0, salaryTotal:0, orders:[],
+    react:rnd()*CFG.news.reactionSec,
+    bias:0.3+rnd()*0.4}));
 }
 
-function applyState(snap, me){
-  const prev = S.snap? S.snap.phase : null;
-  S.snap = snap;
-  if(me) S.me = me;
-  if(S.fresh){
-    S.seenNotice = snap.notices.length? snap.notices[snap.notices.length-1].seq : 0;
-    S.seenNews = new Set(snap.news.map(x=>x.id));
-    S.fresh = false;
-  }else{
-    if(me&&me.newFills) for(const f of me.newFills) pushFill(f);
-    for(const nw of snap.news)    if(!S.seenNews.has(nw.id)){ S.seenNews.add(nw.id); onNews(nw); }
-    for(const nt of snap.notices) if(nt.seq>S.seenNotice){ S.seenNotice=nt.seq; onNotice(nt); }
+function heldValue(p){ let v=0; for(const s of G.stocks) v+=(p.holdings[s.code]||0)*s.last; return v; }
+function lockedCash(p){ let v=0; for(const o of p.orders) if(o.side==='buy') v+=o.price*o.qty; return v; }
+function nav(p){ return p.cash + lockedCash(p) + heldValue(p); }
+function invested(p){ return G.cfg.seedMoney + p.salaryTotal; }
+
+/* ---- 체결 엔진 ---- */
+function notice(text,kind){ G.notices.push({seq:++G.seq,ts:Date.now(),text,kind});
+  if(G.notices.length>40) G.notices.shift(); }
+function recordTrade(s,price,qty,side){
+  G.tape.push({seq:++G.seq,code:s.code,price,qty,side,t:Math.round(G.elapsed)});
+  if(G.tape.length>20) G.tape.shift();
+  s.last=price; s.high=Math.max(s.high,price); s.low=Math.min(s.low,price); s.volume+=qty;
+}
+/* 체결 한 건. 매수 원금은 "대기 주문이면 이미 예치됨 / 공격 주문이면 지금 지불" 로 갈린다.
+   여기 한 곳에서만 현금이 움직인다 — 두 군데서 만지면 이중 계상이 난다. */
+function execute(s,resting,aggressor,aggSide,q){
+  const price=resting.price, amt=price*q, f=fee(amt);
+  const rp=G.players.find(p=>p.id===resting.playerId); if(!rp) return;
+  const buyer = aggSide==='buy'? aggressor : rp;
+  const seller= aggSide==='buy'? rp : aggressor;
+  if(buyer===aggressor) buyer.cash-=amt;      // 대기 매수는 place() 에서 이미 예치했다
+  buyer.cash-=f;
+  seller.cash+=amt-f;
+  buyer.holdings[s.code]=(buyer.holdings[s.code]||0)+q;
+  buyer.cost[s.code]=(buyer.cost[s.code]||0)+amt+f;
+  const sq=seller.holdings[s.code]||0, sc=seller.cost[s.code]||0;
+  const unit=sq? sc/sq : price;
+  seller.holdings[s.code]=Math.max(0,sq-q);
+  seller.cost[s.code]=Math.max(0,sc-unit*q);
+  seller.realized+=(amt-f)-unit*q;
+  recordTrade(s,price,q,aggSide);
+  if(buyer.id==='me') pushFill({code:s.code,name:s.name,side:'buy',price,qty:q,amount:amt,fee:f});
+  if(seller.id==='me') pushFill({code:s.code,name:s.name,side:'sell',price,qty:q,amount:amt,fee:f});
+}
+function place(player,s,side,price,qty,market){
+  qty=floorLot(qty); if(qty<=0) return {filled:0,resting:0,orderId:null};
+  const book = side==='buy'? s.asks : s.bids;
+  book.sort((a,b)=> side==='buy'? a.price-b.price : b.price-a.price);
+  const crosses = o => market || (side==='buy'? o.price<=price : o.price>=price);
+  let filled=0;
+  while(qty>0 && book.length && crosses(book[0])){
+    const o=book[0];
+    if(o.playerId===player.id) break;                       // 자기 주문끼리는 체결 안 된다
+    const q=Math.min(qty,o.qty);
+    if(side==='buy'  && player.cash < o.price*q+fee(o.price*q)) break;
+    if(side==='sell' && (player.holdings[s.code]||0) < q) break;
+    execute(s,o,player,side,q);
+    o.qty-=q; qty-=q; filled+=q;
+    if(o.qty<=0){ book.shift();
+      const op=G.players.find(p=>p.id===o.playerId);
+      if(op) op.orders=op.orders.filter(x=>x.id!==o.id); }
   }
-  routePhase(prev, snap.phase);
-  render();
+  if(market||qty<=0) return {filled,resting:0,orderId:null};
+  if(side==='buy') qty=Math.min(qty,floorLot(player.cash/price));
+  else { const resting=player.orders.filter(o=>o.code===s.code&&o.side==='sell')
+           .reduce((a,o)=>a+o.qty,0);
+         qty=Math.min(qty,floorLot((player.holdings[s.code]||0)-resting)); }
+  if(qty<=0) return {filled,resting:0,orderId:null};
+  const o={id:'o'+(++G.seq),playerId:player.id,code:s.code,side,price,qty};
+  (side==='buy'? s.bids : s.asks).push(o); player.orders.push(o);
+  if(side==='buy') player.cash-=price*qty;                  // 매수는 원금 예치
+  return {filled,resting:qty,orderId:o.id};
+}
+function cancel(player,orderId){
+  const o=player.orders.find(x=>x.id===orderId); if(!o) return 0;
+  const s=G.stocks.find(x=>x.code===o.code);
+  const book = o.side==='buy'? s.bids : s.asks;
+  const i=book.findIndex(x=>x.id===orderId); if(i>=0) book.splice(i,1);
+  player.orders=player.orders.filter(x=>x.id!==orderId);
+  if(o.side==='buy') player.cash+=o.price*o.qty;
+  return o.qty;
 }
 
-function routePhase(prev,cur){
-  if(prev===cur) return;
-  if(cur==='ipo'){ U.view='ipo'; U.ipoPrice=0; U.ipoQty=0; }
-  else if(cur==='trading'){ if(['home','join','setup','lobby','ipo','result'].includes(U.view)) U.view='market'; }
-  else if(cur==='ended'){ U.view='result'; loadResult(); }
-  else if(cur==='lobby') U.view='lobby';
-}
-
-/* ---- 조회 --------------------------------------------------------------- */
-async function loadResult(){
-  try{ S.result = await api('GET', R('/result')); render(); }catch(e){}
-}
-async function loadChart(code){
-  if(!S.roomCode||!code) return;
-  if(S.chart.code===code && Date.now()-S.chart.at<1500) return;
-  S.chart.at = Date.now();
-  try{
-    const d = await api('GET', R('/chart?code=')+encodeURIComponent(code));
-    const row = d.stocks && d.stocks[0];
-    S.chart = {code, rows:(row&&row.history)||[], at:Date.now()};
-    if(U.view==='stock'&&U.tab==='차트') drawChart();
-  }catch(e){}
-}
-async function refreshLobby(){
-  try{ S.lobby = await api('GET', R('')); S.title = S.lobby.title; }catch(e){}
-}
-
-/* ---- 방 ----------------------------------------------------------------- */
-function persist(){
-  lsSet('room',{code:S.roomCode,hostToken:S.hostToken,playerToken:S.playerToken,
-                name:S.myName,title:S.title});
-}
-function forget(){
-  closeStream();
-  lsDel('room');
-  S.roomCode=null; S.hostToken=null; S.playerToken=null; S.playerId=null;
-  S.snap=null; S.me=null; S.lobby=null; S.result=null; S.myIpoBids={};
-  S.seenNews=new Set(); S.seenNotice=0;
-}
-
-/* 방장도 같이 뛴다 — 방을 만든 뒤 바로 참가까지 한다. */
-async function createRoom(config,title,name){
-  const d = await api('POST','/api/rooms',{title,config});
-  closeStream();
-  S.roomCode=d.roomCode; S.hostToken=d.hostToken; S.title=d.title; S.lobby=d.lobby;
-  S.playerToken=null; S.playerId=null;
-  S.snap=null; S.me=null; S.result=null; S.myIpoBids={};
-  S.seenNews=new Set(); S.seenNotice=0;
-  await joinRoom(S.roomCode, name);
-  return d;
-}
-async function joinRoom(code,name){
-  S.roomCode = String(code||'').trim().toUpperCase();
-  const d = await api('POST', R('/join'), {name, deviceId:S.deviceId});
-  S.playerToken=d.playerToken; S.playerId=d.playerId; S.myName=d.name;
-  persist();
-  await refreshLobby();
-  openStream();
-  return d;
-}
-
-/* ---- 시작 --------------------------------------------------------------- */
-async function boot(){
-  try{
-    const m = await api('GET','/api/meta');
-    S.pool = m.stockPool || [];
-    S.defaults = m.defaults || {};
-    if(Array.isArray(m.tickSizeTable)&&m.tickSizeTable.length) S.tickTable=m.tickSizeTable;
-    U.codes  = (S.defaults.stockCodes||S.pool.slice(0,6).map(s=>s.code)).slice();
-    U.dur    = S.defaults.durationMin!==undefined? S.defaults.durationMin : U.dur;
-    U.ipoSec = S.defaults.ipoSec!==undefined? S.defaults.ipoSec : U.ipoSec;
-    U.seed   = S.defaults.seedMoney!==undefined? S.defaults.seedMoney : U.seed;
-    U.bots   = S.defaults.botCount!==undefined? S.defaults.botCount : U.bots;
-  }catch(e){
-    S.booted=true; render();
-    toastErr({code:e.code||'NO_META',message:'서버에 연결하지 못했습니다. 새로고침해 주세요'});
+/* ---- 봇 ---- */
+function botAct(b){
+  const s=pick(G.stocks);
+  const held=b.holdings[s.code]||0;
+  if(b.type==='maker'){
+    const sp=s.last*CFG.makerSpread;
+    if(b.cash>s.last*CFG.lotSize*2) place(b,s,'buy',roundTick(s.last-sp),CFG.lotSize*(1+Math.floor(rnd()*3)));
+    if(held>=CFG.lotSize) place(b,s,'sell',roundTick(s.last+sp),CFG.lotSize*(1+Math.floor(rnd()*3)));
     return;
   }
-
-  // 새로고침이나 통신 끊김에서 돌아온 경우 — 보관해 둔 토큰이 아직 유효한지 확인한다.
-  const saved = lsGet('room',null);
-  if(saved && saved.code){
-    S.roomCode=saved.code; S.hostToken=saved.hostToken||null;
-    S.title=saved.title||''; S.myName=saved.name||'';
-    if(saved.playerToken){
-      S.playerToken=saved.playerToken;
-      try{
-        const d = await api('POST', R('/resume'), {playerToken:saved.playerToken});
-        S.playerId=d.playerId; S.myName=d.name;
-      }catch(e){ S.playerToken=null; }
-    }
-    if(S.playerToken||S.hostToken){
-      try{ await refreshLobby(); U.view='lobby'; persist(); openStream(); }
-      catch(e){ forget(); }
-    }else forget();
-  }
-  S.booted=true;
-  render();
+  const back=s.history.filter(h=>h.t>=G.elapsed-CFG.lookbackSec);
+  const mom = back.length>1 ? s.last/back[0].price-1 : 0;
+  const val = s.fair? s.last/s.fair-1 : 0;
+  let score=0;
+  if(b.type==='trend') score=mom*4;
+  else if(b.type==='contra') score=-mom*4;
+  else if(b.type==='value') score=-val*6;
+  else score=(b.bias-0.5)*2 + gauss()*0.3;
+  // 봇은 사람과 같은 정보(현재가·적정가)를 본다. 괴리가 벌어지면 모두가 조금씩 메우려 한다 —
+  // 이게 없으면 인플레로 오른 적정가를 체결가가 못 따라가 전 종목이 -30% 저평가로 굳는다.
+  score += -val*1.5 + newsPull(s,b);
+  const buy = score>0;
+  const qty = buy ? Math.max(CFG.lotSize, floorLot(b.cash*0.05/s.last))
+                  : Math.max(CFG.lotSize, floorLot(held*0.15));
+  const off = s.last*(0.001+rnd()*0.006)*(buy?1:-1);
+  const px = roundTick(s.last+off);
+  if(buy){ if(b.cash>px*qty*1.01) place(b,s,'buy',px,qty); }
+  else if(held>=qty) place(b,s,'sell',px,qty);
 }
+
+/* ---- 진행 ---- */
+function issueBonus(){
+  const cashAdded=G.cfg.salaryAmount*G.players.length;
+  let stockValue=0; for(const s of G.stocks) for(const p of G.players) stockValue+=(p.holdings[s.code]||0)*s.last;
+  if(stockValue<=0) return;
+  const rate=Math.min(G.cfg.maxBonusRate, cashAdded/stockValue);
+  let mine=[];
+  for(const s of G.stocks){ let add=0;
+    for(const p of G.players){ const h=p.holdings[s.code]||0; const b=Math.floor(h*rate);
+      if(b>0){ p.holdings[s.code]=h+b; p.bonus[s.code]=(p.bonus[s.code]||0)+b; add+=b;
+        if(p.id==='me') mine.push(s.name+' +'+b); } }
+    s.issued+=add;
+  }
+  notice(`무상증자 ${(rate*100).toFixed(1)}%${mine.length?' — '+mine.join(', '):''}`,'bonus');
+  return {rate,mine};
+}
+function spawnNews(){
+  const N=G.cfg.news; if(!N.enabled) return;
+  G.news=G.news.filter(x=>G.elapsed-x.t < x.lifeSec);
+  if(G.news.length>=N.maxActive) return;
+  const s=pick(G.stocks.filter(x=>!G.news.some(nw=>nw.code===x.code))); if(!s) return;
+  const sign=rnd()<N.positiveRatio?1:-1;
+  const list=sign>0?NEWS_POS:NEWS_NEG;
+  const mag=N.impact*(0.6+rnd()*0.8);
+  s.fair=Math.max(1,s.fair*(1+sign*mag));
+  const nw={id:'n'+(++G.seq),code:s.code,name:s.name,sign,
+    headline:list[Math.floor(rnd()*list.length)].replace('{n}',s.name),
+    impactPct:sign*mag*100, t:G.elapsed, lifeSec:N.lifeSec};
+  G.news.push(nw); G.newsLog.push(nw);
+  notice(nw.headline, sign>0?'news-up':'news-down');
+  if(typeof onNews==='function') onNews(nw);
+}
+/** 봇 동조 — 뉴스를 인지한 봇만 반응한다. 인지 시점은 봇마다 흩어져 있다. */
+function newsPull(s,b){
+  const N=G.cfg.news; let v=0;
+  for(const nw of G.news){ if(nw.code!==s.code) continue;
+    const age=G.elapsed-nw.t; if(age<b.react) continue;
+    const remain=Math.max(0,1-age/nw.lifeSec);
+    v += nw.sign*N.strength*(nw.sign<0?N.negativeMultiplier:1)*remain; }
+  return v;
+}
+function tick(dt){
+  if(G.phase==='ipo'){
+    G.ipoElapsed+=dt;
+    for(const s of G.stocks){
+      if(rnd()<0.35){ const b=pick(G.players.filter(p=>p.id!=='me'));
+        const px=roundTick(s.initialPrice*(1+rnd()*0.25));
+        const q=floorLot(b.cash*0.12/px);
+        if(q>0 && b.cash>=px*q){ b.cash-=px*q; s.ipoBids.push({playerId:b.id,price:px,qty:q}); } }
+    }
+    if(G.ipoElapsed>=G.cfg.ipoSec) closeIpo();
+    return;
+  }
+  if(G.phase!=='trading') return;
+  G.elapsed+=dt;
+  const drift=Math.log(1+G.cfg.inflationPerMin)*(dt/60);
+  const sig=G.cfg.idioVolatility*Math.sqrt(dt/(G.cfg.durationMin*60));
+  for(const s of G.stocks){ s.fair=Math.max(1,s.fair*Math.exp(drift+gauss()*sig));
+    const t=Math.round(G.elapsed);
+    if(!s.history.length||s.history[s.history.length-1].t<t)
+      s.history.push({t,price:s.last,fair:Math.round(s.fair)});
+    if(s.history.length>1800) s.history.shift(); }
+  for(const b of G.players) if(b.isBot||b.sim) if(rnd()<G.cfg.botActionRate*(dt/0.25)) botAct(b);
+  G.news=G.news.filter(x=>G.elapsed-x.t < x.lifeSec);
+  if(rnd() < dt/G.cfg.news.intervalSec) spawnNews();
+  const due=Math.floor(G.elapsed/G.cfg.salaryIntervalSec);
+  if(due>G.salaryCount){ G.salaryCount=due;
+    for(const p of G.players){ p.cash+=G.cfg.salaryAmount; p.salaryTotal+=G.cfg.salaryAmount; }
+    notice(`월급 ${G.cfg.salaryAmount.toLocaleString()}원 지급`,'salary');
+    const b=issueBonus();
+    pushSalary(b);
+  }
+  if(G.elapsed>=G.cfg.durationMin*60){ G.phase='ended'; G.endedAt=Date.now(); notice('장 마감','close'); }
+}
+function closeIpo(){
+  for(const s of G.stocks){
+    const bids=[...s.ipoBids].sort((a,b)=>b.price-a.price);
+    let cum=0, clearing=s.initialPrice;
+    for(const b of bids){ cum+=b.qty; clearing=b.price; if(cum>=s.float) break; }
+    const eligible=bids.filter(b=>b.price>=clearing);
+    const demand=eligible.reduce((a,b)=>a+b.qty,0);
+    const ratio=demand>0?Math.min(1,s.float/demand):0;
+    let issued=0;
+    for(const b of eligible){
+      const alloc=floorLot(b.qty*ratio); const p=G.players.find(x=>x.id===b.playerId);
+      const spend=alloc*clearing, f=fee(spend);
+      p.cash += b.price*b.qty;              // 증거금 전액 환불
+      if(alloc>0 && p.cash>=spend+f){
+        p.cash-=spend+f; p.holdings[s.code]=(p.holdings[s.code]||0)+alloc;
+        p.cost[s.code]=(p.cost[s.code]||0)+spend+f; issued+=alloc;
+        if(p.id==='me') pushFill({code:s.code,name:s.name,side:'buy',price:clearing,qty:alloc,
+          amount:spend,fee:f,tag:'공모'});
+      }
+    }
+    for(const b of bids.filter(b=>b.price<clearing)){
+      const p=G.players.find(x=>x.id===b.playerId); if(p) p.cash+=b.price*b.qty;
+    }
+    s.open=clearing; s.last=clearing; s.high=clearing; s.low=clearing; s.issued=issued;
+    s.ipoBids=[]; s.history=[{t:0,price:clearing,fair:Math.round(s.fair)}];
+  }
+  G.phase='trading'; notice('정규장 개장','open');
+  for(let i=0;i<160;i++) botAct(pick(G.players.filter(p=>p.isBot)));
+  go('market');
+}
+
+/* ---- API (SWAP POINT) ---------------------------------------------------
+   진짜 서버로 바꿀 때: 아래 함수들을 fetch/EventSource 로 교체하면 된다.
+     getMeta      → GET  /api/meta
+     createRoom   → POST /api/rooms
+     start        → POST /api/rooms/{code}/start
+     ipoBid       → POST /api/rooms/{code}/ipo-bids
+     order/cancel → POST /api/rooms/{code}/orders , /orders/cancel
+     snapshot/me  → SSE  /api/rooms/{code}/stream 의 state 이벤트
+   ------------------------------------------------------------------------ */
+const API = {
+  getMeta:()=>({stockPool:POOL, defaults:{...CFG}}),
+  createRoom(cfg){
+    Object.assign(G.cfg,cfg); G.players=makePlayers(); G.me=G.players[0];
+    G.stocks=makeStocks(cfg.stockCodes); G.notices=[]; G.tape=[];
+    G.elapsed=0; G.ipoElapsed=0; G.salaryCount=0; G.endedAt=null;
+    G.phase = G.cfg.ipoSec>0 ? 'ipo' : 'trading';
+    if(G.phase==='trading'){
+      // 공모를 끄면 아무도 주식이 없어 매도 호가가 영원히 안 생긴다.
+      // 서버의 initialShares 처럼 발행량을 초기가로 균등 배정해 시장이 돌게 한다.
+      for(const s of G.stocks){
+        s.open=s.initialPrice; s.history=[{t:0,price:s.last,fair:s.initialPrice}];
+        const each=floorLot(s.float/G.players.length); let issued=0;
+        for(const p of G.players){
+          const cost=each*s.initialPrice;
+          if(each<=0||p.cash<cost) continue;
+          p.cash-=cost; p.holdings[s.code]=(p.holdings[s.code]||0)+each;
+          p.cost[s.code]=(p.cost[s.code]||0)+cost; issued+=each;
+        }
+        s.issued=issued;
+      }
+      for(let i=0;i<160;i++) botAct(pick(G.players.filter(p=>p.isBot))); }
+    return {roomCode:'DEMO'+Math.floor(rnd()*900+100)};
+  },
+  ipoBid(code,price,qty){
+    const s=G.stocks.find(x=>x.code===code); const need=price*qty;
+    if(G.me.cash<need) return {error:{code:'INSUFFICIENT_CASH',message:'현금이 부족합니다'}};
+    G.me.cash-=need; s.ipoBids.push({playerId:'me',price,qty});
+    return {code,price,qty,reserved:need};
+  },
+  order(code,side,price,qty,market){
+    if(G.phase!=='trading') return {error:{code:'NOT_TRADING',message:'거래 시간이 아닙니다'}};
+    const s=G.stocks.find(x=>x.code===code);
+    if(market){ const book=side==='buy'?s.asks:s.bids;
+      if(!book.length) return {error:{code:'NO_COUNTERPARTY',message:'반대 호가가 없습니다'}}; }
+    if(side==='buy'){ const cost=(market? s.last:price)*qty;
+      if(G.me.cash<cost) return {error:{code:'INSUFFICIENT_CASH',message:'현금이 부족합니다'}}; }
+    else { const free=(G.me.holdings[code]||0)-G.me.orders.filter(o=>o.code===code&&o.side==='sell')
+        .reduce((a,o)=>a+o.qty,0);
+      if(free<qty) return {error:{code:'INSUFFICIENT_SHARES',message:'보유 주식이 부족합니다'}}; }
+    return place(G.me,s,side,price,qty,market);
+  },
+  cancel(id){ return {cancelled:cancel(G.me,id)}; },
+  snapshot(){
+    const depth=s=>{
+      const agg=(arr,desc)=>{ const m=new Map();
+        for(const o of arr) m.set(o.price,(m.get(o.price)||0)+o.qty);
+        return [...m.entries()].map(([price,qty])=>({price,qty}))
+          .sort((a,b)=>desc?b.price-a.price:a.price-b.price).slice(0,10); };
+      return {bids:agg(s.bids,true), asks:agg(s.asks,false)};
+    };
+    const rank=G.players.filter(p=>p.human).map(p=>({id:p.id,name:p.name,isBot:false,
+      nav:Math.round(nav(p)),pnl:Math.round(nav(p)-invested(p)),
+      pnlPct:(nav(p)/invested(p)-1)*100})).sort((a,b)=>b.nav-a.nav)
+      .map((p,i)=>({rank:i+1,...p}));
+    return {phase:G.phase, elapsedSec:Math.round(G.elapsed),
+      ipoRemainSec:Math.max(0,Math.ceil(G.cfg.ipoSec-G.ipoElapsed)),
+      remainSec:Math.max(0,Math.ceil(G.cfg.durationMin*60-G.elapsed)),
+      playerCount:G.players.length, humanCount:G.players.filter(p=>p.human).length,
+      config:{...G.cfg},
+      stocks:G.stocks.map(s=>({code:s.code,name:s.name,color:s.color,last:s.last,
+        fair:Math.round(s.fair),open:s.open,high:s.high,low:s.low,volume:s.volume,
+        float:s.float,issued:s.issued,
+        changePct:(s.last/s.open-1)*100, vsFairPct:s.fair?(s.last/s.fair-1)*100:0,
+        depth:depth(s), ipoDemand:s.ipoBids.reduce((a,b)=>a+b.qty,0)})),
+      ranking:rank.slice(0,20), notices:G.notices.slice(-6), tape:G.tape.slice(-20),
+      news:G.news.map(x=>({id:x.id,code:x.code,name:x.name,sign:x.sign,headline:x.headline,
+        impactPct:+x.impactPct.toFixed(1),ageSec:Math.round(G.elapsed-x.t),lifeSec:x.lifeSec}))};
+  },
+  me(){
+    const p=G.me;
+    const humans=G.players.filter(x=>x.human).map(x=>({id:x.id,nav:nav(x)})).sort((a,b)=>b.nav-a.nav);
+    return {id:p.id,name:p.name,cash:Math.round(p.cash),lockedCash:Math.round(lockedCash(p)),
+      rank:humans.findIndex(x=>x.id===p.id)+1, rankTotal:humans.length,
+      tradable:G.stocks.map(s=>{
+        const restSell=p.orders.filter(o=>o.code===s.code&&o.side==='sell').reduce((a,o)=>a+o.qty,0);
+        return {code:s.code,name:s.name,last:s.last,
+          maxBuyQty:floorLot(p.cash/(s.last*(1+G.cfg.feeRate))),
+          maxSellQty:floorLot((p.holdings[s.code]||0)-restSell)};}),
+      nav:Math.round(nav(p)),invested:invested(p),salaryTotal:p.salaryTotal,
+      realized:Math.round(p.realized),
+      holdings:G.stocks.filter(s=>(p.holdings[s.code]||0)>0).map(s=>{
+        const qty=p.holdings[s.code], c=p.cost[s.code]||0, ev=qty*s.last;
+        return {code:s.code,name:s.name,color:s.color,qty,bonus:p.bonus[s.code]||0,
+          locked:p.orders.filter(o=>o.code===s.code&&o.side==='sell').reduce((a,o)=>a+o.qty,0),
+          avgPrice:Math.round(c/qty),last:s.last,evalAmount:ev,pnl:Math.round(ev-c),
+          pnlPct:c?(ev/c-1)*100:0};}),
+      openOrders:p.orders.map(o=>({id:o.id,code:o.code,
+        name:G.stocks.find(s=>s.code===o.code).name,side:o.side,price:o.price,qty:o.qty}))};
+  },
+};
 </script>
 
 <script>
@@ -314,10 +480,9 @@ async function boot(){
    ========================================================================= */
 const $ = s => document.querySelector(s);
 const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
-const U = { view:'home', codes:[], dur:15, ipoSec:45, seed:1000000, bots:30,
-            name:'', joinCode:'', title:'',
-            code:null, tab:'호가', price:0, qty:0, market:false,
-            ipoCode:null, ipoPrice:0, ipoQty:0, sort:'chg', busy:false };
+const U = { view:'setup', codes:POOL.map(s=>s.code), dur:15, ipoSec:45, seed:1000000,
+            bots:30, code:null, tab:'호가', price:0, qty:CFG.lotSize, market:false,
+            ipoCode:'SNU', ipoPrice:0, ipoQty:0, sort:'chg' };
 
 const n  = v => Math.round(v).toLocaleString('en-US');
 const pc = v => (v>=0?'+':'−')+Math.abs(v).toFixed(2)+'%';
@@ -325,8 +490,8 @@ const p1 = v => (v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%';
 const sg = v => (v>=0?'+':'−')+n(Math.abs(v));
 const cl = v => v>=0?'var(--up)':'var(--down)';
 const clk= s => String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.round(s)%60).padStart(2,'0');
-const esc= s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function light(hex,a=.45){const v=parseInt(String(hex||'#888888').slice(1),16),f=x=>Math.round(x+(255-x)*a);
+const esc= s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function light(hex,a=.45){const v=parseInt(hex.slice(1),16),f=x=>Math.round(x+(255-x)*a);
   return '#'+[f(v>>16&255),f(v>>8&255),f(v&255)].map(x=>x.toString(16).padStart(2,'0')).join('');}
 const dot = (c,s=9)=>`<span class="dot" style="width:${s}px;height:${s}px;background:${light(c)}"></span>`;
 const fairBadge = v => `<span class="badge m" style="background:${v>=5?'var(--warnT)':'var(--surf3)'};
@@ -335,9 +500,6 @@ const svg = (d,sz=20,c='var(--dim)',w=1.6)=>`<svg width="${sz}" height="${sz}" v
   stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
 const iBack=`${svg('M15 5l-7 7 7 7',22,'var(--text)',1.8)}`;
 const iMinus=svg('M5 12h14',18,'var(--dim)',2), iPlus=svg('M12 5v14M5 12h14',18,'var(--text)',2);
-const iInfo='M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2';
-const iBolt='M13 3L5 14h6l-1 7 8-11h-6l1-7z';
-const iCard='M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4';
 
 /* ---- 토스트 ---- */
 let toasts=[];
@@ -347,63 +509,33 @@ function showToast(html,ms=4200){
   renderToasts(); setTimeout(()=>{toasts=toasts.filter(t=>t.id!==id);renderToasts();},ms);
 }
 function renderToasts(){ toastEl.innerHTML = toasts.map(t=>`<div class="toast">${t.html}</div>`).join(''); }
-
-/* 체결 알림. me.newFills 는 직전 전송 이후의 신규분만 오므로 그대로 띄우면 중복이 없다.
-   수수료는 서버가 체결금액에 feeRate 를 곱해 내림한 값이라(_settleTrades) 같은 식으로 계산한다. */
 function pushFill(f){
-  const fee = Math.floor(f.amount*CFG.feeRate);
   showToast(`<div style="display:flex;align-items:center;gap:10px">
     <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
       justify-content:center;background:${f.side==='buy'?'var(--upT)':'var(--downT)'}">
       ${svg('M4 12.5l5 5L20 6.5',17,f.side==='buy'?'var(--up)':'var(--down)',2)}</div>
-    <div class="grow"><div style="font-size:13px;font-weight:700">${f.side==='buy'?'매수':'매도'} 체결 · ${esc(f.name)}${f.tag?' ('+esc(f.tag)+')':''}</div>
-      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${n(f.price)} × ${n(f.qty)}주 · 수수료 ${n(fee)}</div></div>
+    <div class="grow"><div style="font-size:13px;font-weight:700">${f.side==='buy'?'매수':'매도'} 체결 · ${esc(f.name)}${f.tag?' ('+f.tag+')':''}</div>
+      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${n(f.price)} × ${n(f.qty)}주 · 수수료 ${n(f.fee)}</div></div>
     <div class="m" style="font-size:15px;font-weight:700;color:${f.side==='buy'?'var(--up)':'var(--down)'}">
       ${f.side==='buy'?'−':'+'}${n(f.amount)}</div></div>`);
 }
-
-/* 공지. 서버가 보내는 notices[].kind 를 그대로 쓴다.
-   news-up / news-down 은 아래 onNews 가 훨씬 큰 카드로 띄우므로 여기서는 건너뛴다. */
-function onNotice(nt){
-  if(nt.kind==='news-up'||nt.kind==='news-down') return;
-  const skin = {
-    salary:{icon:iCard, c:'var(--acc)', bg:'var(--accT)', t:'월급 입금'},
-    bonus :{icon:'M12 3v18M5 10l7-7 7 7', c:'var(--acc)', bg:'var(--accT)', t:'무상증자'},
-    ipo   :{icon:iBolt, c:'var(--warn)', bg:'var(--warnT)', t:'개장 공모'},
-    open  :{icon:iBolt, c:'var(--up)',  bg:'var(--upT)',   t:'개장'},
-    close :{icon:iInfo, c:'var(--dim)', bg:'var(--surf3)', t:'마감'},
-    kick  :{icon:iInfo, c:'var(--warn)',bg:'var(--warnT)', t:'안내'},
-  }[nt.kind] || {icon:iInfo, c:'var(--dim)', bg:'var(--surf3)', t:'안내'};
-  const extra = nt.kind==='salary'
-    ? `<div style="font-size:10px;color:var(--dim2);margin-top:3px">인플레는 현금을 깎지 않습니다 — 적정가가 분당 ${(CFG.inflationPerMin*100).toFixed(1)}% 오릅니다</div>` : '';
-  const amt = nt.kind==='salary'
-    ? `<div class="m" style="font-size:16px;font-weight:700;color:var(--acc)">+${n(CFG.salaryAmount)}</div>` : '';
-  showToast(`<div style="display:flex;align-items:center;gap:10px">
-    <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
-      justify-content:center;background:${skin.bg}">${svg(skin.icon,18,skin.c,1.5)}</div>
-    <div class="grow"><div style="font-size:13px;font-weight:700">${skin.t}${nt.kind==='salary'?' · '+salaryCount()+'분차':''}</div>
-      <div style="font-size:11px;color:var(--dim2);margin-top:2px">${esc(nt.text)}</div>${extra}</div>${amt}</div>`);
-}
-
 /* 돌발뉴스. 판당 약 12건이라 화면을 막는 모달은 쓸 수 없다 — 토스트 + 상단 배너로 알린다.
    sign 과 impactPct 는 방향이 그대로 드러나므로 화면에 쓰지 않는다(헤드라인으로 판단하는 게 설계 의도).
    즉시 체결되는 주문 버튼은 편의가 아니라 밸런스다 — 지정가를 현재가에 걸면 현금이 묶인 채 뒤처진다. */
 function onNews(nw){
-  const s = stockOf(nw.code); if(!s) return;
-  const me = S.me;
-  const tr = (me&&me.tradable.find(t=>t.code===nw.code)) || {maxBuyQty:0,maxSellQty:0};
+  const s=G.stocks.find(x=>x.code===nw.code); if(!s) return;
+  const me=API.me(), tr=me.tradable.find(t=>t.code===nw.code)||{maxBuyQty:0,maxSellQty:0};
   const bpx=roundTick(s.last*1.02), spx=roundTick(s.last*0.98);
-  const canSell = tr.maxSellQty>=CFG.lotSize;
-  const canAct = !!me && S.snap && S.snap.phase==='trading';
+  const canSell=tr.maxSellQty>=CFG.lotSize;
   showToast(`<div style="display:flex;align-items:center;gap:9px">
       <span class="badge" style="background:var(--warnT);color:var(--warn);gap:4px;letter-spacing:.04em">
-        ${svg(iBolt,12,'var(--warn)',1.6)}돌발 뉴스</span>
-      ${dot(s.color,8)}<span style="font-size:12px;color:var(--dim)">${esc(s.name)}</span>
+        ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',12,'var(--warn)',1.6)}돌발 뉴스</span>
+      ${dot(s.color,8)}<span style="font-size:12px;color:var(--dim)">${s.name}</span>
       <span class="grow"></span>
       <span class="m" style="font-size:12px;font-weight:700">${n(s.last)}</span>${fairBadge(s.vsFairPct)}</div>
     <button data-act="stock" data-v="${nw.code}" style="display:block;width:100%;text-align:left;
       font-size:15px;font-weight:700;line-height:1.4;margin-top:9px">${esc(nw.headline)}</button>
-    ${canAct?`<div style="display:flex;gap:8px;margin-top:12px">
+    <div style="display:flex;gap:8px;margin-top:12px">
       <button data-act="newsSell" data-v="${nw.code}" ${canSell?'':'disabled'}
         style="flex:1;height:46px;border-radius:11px;background:${canSell?'var(--downT)':'transparent'};
         border:1px solid ${canSell?'var(--down)':'var(--line)'};color:${canSell?'var(--down)':'var(--dim2)'};
@@ -411,172 +543,73 @@ function onNews(nw){
       <button data-act="newsBuy" data-v="${nw.code}"
         style="flex:1;height:46px;border-radius:11px;background:var(--up);color:#fff;
         font-size:14px;font-weight:700">바로 매수 ${n(bpx)}</button></div>
-    <div style="font-size:10px;color:var(--dim2);margin-top:8px">한두 호가 위아래로 질러야 즉시 체결됩니다. 지정가를 현재가에 걸면 현금이 묶인 채 밀립니다.</div>`:''}`, 11000);
+    <div style="font-size:10px;color:var(--dim2);margin-top:8px">한두 호가 위아래로 질러야 즉시 체결됩니다. 지정가를 현재가에 걸면 현금이 묶인 채 밀립니다.</div>`, 11000);
 }
 function newsBanner(snap){
   if(!snap.news.length) return '';
   return `<div class="pad" style="padding-top:12px;display:flex;flex-direction:column;gap:6px">
-    ${snap.news.map(nw=>`<button data-act="stock" data-v="${nw.code}" style="width:100%;text-align:left;display:flex;
+    ${snap.news.map(nw=>{const st=snap.stocks.find(x=>x.code===nw.code);
+      return `<button data-act="stock" data-v="${nw.code}" style="width:100%;text-align:left;display:flex;
         align-items:center;gap:8px;padding:10px 12px;border-radius:11px;background:var(--warnT);
         border:1px solid rgba(245,165,36,.3);min-height:44px">
-        ${svg(iBolt,15,'var(--warn)',1.6)}
+        ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',15,'var(--warn)',1.6)}
         <span class="grow" style="font-size:12px;font-weight:600;line-height:1.4">${esc(nw.headline)}</span>
-        <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${Math.max(0,nw.lifeSec-nw.ageSec)}초</span>
-      </button>`).join('')}</div>`;
+        <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${nw.lifeSec-nw.ageSec}초</span>
+      </button>`;}).join('')}</div>`;
+}
+function pushSalary(b){
+  const mine=(b&&b.mine&&b.mine.length)? b.mine.join(' · ') : '보유 주식이 없어 배정 없음';
+  showToast(`<div style="display:flex;align-items:center;gap:10px">
+    <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
+      justify-content:center;background:var(--accT)">${svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',18,'var(--acc)',1.5)}</div>
+    <div class="grow"><div style="font-size:13px;font-weight:700">월급 입금 · ${G.salaryCount}분차</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:2px">무상증자 ${b?(b.rate*100).toFixed(1)+'%':'—'} · ${esc(mine)}</div>
+      <div style="font-size:10px;color:var(--dim2);margin-top:3px">인플레는 현금을 깎지 않습니다 — 적정가가 분당 ${(G.cfg.inflationPerMin*100).toFixed(1)}% 오릅니다</div></div>
+    <div class="m" style="font-size:16px;font-weight:700;color:var(--acc)">+${n(G.cfg.salaryAmount)}</div></div>`);
 }
 function toastErr(e){ showToast(`<div style="display:flex;gap:10px;align-items:center">
   <div style="width:32px;height:32px;border-radius:10px;background:var(--warnT);flex-shrink:0;
     display:flex;align-items:center;justify-content:center">${svg('M12 8v5M12 16.4v.2M10.3 4.3L2.8 17.5A1.5 1.5 0 004.1 20h15.8a1.5 1.5 0 001.3-2.5L13.7 4.3a1.5 1.5 0 00-2.6 0z',17,'var(--warn)',1.6)}</div>
-  <div class="grow"><div style="font-size:13px;font-weight:700">${esc(e.message||'요청이 실패했습니다')}</div>
-  <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${esc(e.code||'ERROR')}</div></div></div>`,3200); }
-
-/* 연결이 끊기면 화면 값이 멈춘다. 참가자가 그걸 모르면 안 된다. */
-function connBanner(){
-  if(S.stream!=='lost') return '';
-  return `<div class="pad" style="padding-top:10px"><div style="display:flex;align-items:center;gap:8px;
-    padding:10px 12px;border-radius:11px;background:var(--warnT);border:1px solid rgba(245,165,36,.3)">
-    ${svg(iInfo,15,'var(--warn)',1.6)}<span style="font-size:12px;font-weight:600">연결이 끊겼습니다 — 다시 붙는 중입니다</span></div></div>`;
-}
-function pausedBanner(snap){
-  if(!snap.paused) return '';
-  return `<div class="pad" style="padding-top:10px"><div style="display:flex;align-items:center;gap:8px;
-    padding:10px 12px;border-radius:11px;background:var(--surf3);border:1px solid var(--line2)">
-    ${svg('M9 5v14M15 5v14',15,'var(--dim)',1.8)}<span style="font-size:12px;font-weight:600">방장이 게임을 멈췄습니다</span></div></div>`;
-}
-
-/* ---- 0. 시작 ---- */
-function vHome(){
-  if(!S.booted) return `<div class="hdr"><h1>모의주식 챌린지</h1></div>
-    <div class="pad" style="padding-top:40px;text-align:center;font-size:13px;color:var(--dim2)">불러오는 중…</div>`;
-  return `<div class="hdr"><h1>모의주식 챌린지</h1></div>
-  <div class="pad" style="padding-top:28px;display:flex;flex-direction:column;gap:22px">
-    <div style="font-size:13px;color:var(--dim);line-height:1.7">참가코드 하나로 모여서
-      ${CFG.durationMin}분 동안 모의 주식을 사고파는 게임입니다.<br>최종 자산이 가장 높은 사람이 이깁니다.</div>
-    <div><div class="lbl">이름</div>
-      <input data-in="name" value="${esc(U.name)}" maxlength="12" placeholder="순위표에 표시됩니다"
-        style="width:100%;height:52px;padding:0 14px;border-radius:12px;background:var(--bg);
-        border:1px solid var(--line2);color:var(--text);font-family:inherit;font-size:16px"></div>
-  </div>
-  <div class="sticky" style="display:flex;flex-direction:column;gap:10px">
-    <button class="cta" data-act="goJoin">참가코드로 들어가기</button>
-    <button class="ghost" style="width:100%" data-act="go" data-v="setup">방 만들기</button></div>`;
-}
-
-/* ---- 0-1. 참가 ---- */
-function vJoin(){
-  return `<div class="hdr"><button class="iconbtn" data-act="go" data-v="home" aria-label="뒤로">${iBack}</button>
-    <h1>참가하기</h1></div>
-  <div class="pad" style="padding-top:28px;display:flex;flex-direction:column;gap:22px">
-    <div><div class="lbl">참가코드</div>
-      <input data-in="joinCode" value="${esc(U.joinCode)}" maxlength="8" placeholder="ABC123"
-        autocapitalize="characters" autocomplete="off"
-        style="width:100%;height:60px;padding:0 16px;border-radius:12px;background:var(--bg);
-        border:1px solid var(--line2);color:var(--text);font-family:var(--mono);font-size:26px;
-        font-weight:700;letter-spacing:.18em;text-transform:uppercase">
-      <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}<span>방장이 불러주는 6자리 코드를 넣으세요.</span></div></div>
-    <div><div class="lbl">이름</div>
-      <input data-in="name" value="${esc(U.name)}" maxlength="12" placeholder="순위표에 표시됩니다"
-        style="width:100%;height:52px;padding:0 14px;border-radius:12px;background:var(--bg);
-        border:1px solid var(--line2);color:var(--text);font-family:inherit;font-size:16px"></div>
-  </div>
-  <div class="sticky"><button class="cta" data-act="join" ${U.busy?'disabled':''}>${U.busy?'들어가는 중…':'들어가기'}</button></div>`;
-}
+  <div class="grow"><div style="font-size:13px;font-weight:700">${esc(e.message)}</div>
+  <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${esc(e.code)}</div></div></div>`,3200); }
 
 /* ---- 1. 방 만들기 ---- */
 function vSetup(){
   const seg=(id,opts,cur)=>`<div class="seg">${opts.map(o=>
     `<button data-act="set" data-k="${id}" data-v="${o.v}" aria-pressed="${o.v==cur}">${o.t}</button>`).join('')}</div>`;
-  return `<div class="hdr"><button class="iconbtn" data-act="go" data-v="home" aria-label="뒤로">${iBack}</button>
-    <h1>방 만들기</h1></div>
+  return `<div class="hdr"><h1>방 만들기</h1><span class="m" style="font-size:11px;color:var(--dim2)">더미 API</span></div>
   <div class="pad" style="padding-top:20px;padding-bottom:20px;display:flex;flex-direction:column;gap:22px">
-    <div><div class="lbl">방 이름</div>
-      <input data-in="title" value="${esc(U.title)}" maxlength="24" placeholder="동문회 챌린지"
-        style="width:100%;height:52px;padding:0 14px;border-radius:12px;background:var(--bg);
-        border:1px solid var(--line2);color:var(--text);font-family:inherit;font-size:16px"></div>
-    <div><div class="lbl">거래 종목 <span style="color:var(--acc)">${U.codes.length} / ${S.pool.length}</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">${S.pool.map(s=>{const on=U.codes.includes(s.code);
+    <div><div class="lbl">거래 종목 <span style="color:var(--acc)">${U.codes.length} / 10</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${POOL.map(s=>{const on=U.codes.includes(s.code);
         return `<button data-act="tog" data-v="${s.code}" style="display:flex;align-items:center;gap:7px;height:44px;
           padding:0 12px;border-radius:10px;border:1px solid ${on?'var(--acc)':'var(--line)'};
           background:${on?'var(--accT)':'transparent'};color:${on?'var(--text)':'var(--dim)'}">
-          ${dot(s.color,8)}<span style="font-size:13px;font-weight:${on?600:500}">${esc(s.name)}</span>
+          ${dot(s.color,8)}<span style="font-size:13px;font-weight:${on?600:500}">${s.name}</span>
           <span class="m" style="font-size:11px;color:var(--dim2)">${n(s.initialPrice)}</span></button>`;}).join('')}</div>
-      <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}<span>2개 이상 골라야 방을 만들 수 있어요.</span></div></div>
+      <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+        <span>2개 이상 골라야 시작할 수 있어요. 서버에서는 <span class="m">GET /api/meta</span> 의 stockPool 을 그대로 씁니다.</span></div></div>
     <div><div class="lbl">정규장 길이</div>${seg('dur',[{v:5,t:'5분'},{v:10,t:'10분'},{v:15,t:'15분'}],U.dur)}</div>
-    <div><div class="lbl">개장 공모</div>${seg('ipoSec',[{v:30,t:'30초'},{v:45,t:'45초'},{v:60,t:'60초'}],U.ipoSec)}
-      <div class="hint">${svg(iBolt,16,'var(--warn)',1.5)}
-        <span>전원 <b style="color:var(--text)">주식 0주</b>로 시작합니다. 청약하지 않으면 무상증자를 한 주도 못 받아 수익률이 0%에 고정돼요.
-        주식이 시장에 풀리는 유일한 통로라 공모는 끌 수 없습니다.</span></div></div>
+    <div><div class="lbl">개장 공모</div>${seg('ipoSec',[{v:0,t:'없음'},{v:30,t:'30초'},{v:45,t:'45초'}],U.ipoSec)}
+      <div class="hint">${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',16,'var(--warn)',1.5)}
+        <span>전원 <b style="color:var(--text)">주식 0주</b>로 시작합니다. 청약하지 않으면 무상증자를 한 주도 못 받아 수익률이 0%에 고정돼요.</span></div></div>
     <div><div class="lbl">1인당 시작 현금</div>${seg('seed',[{v:500000,t:'50만'},{v:1000000,t:'100만'},{v:5000000,t:'500만'}],U.seed)}</div>
     <div><div class="lbl">봇</div>${seg('bots',[{v:10,t:'10'},{v:30,t:'30'},{v:60,t:'60'}],U.bots)}
-      <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-        <span>봇은 사람과 같은 조건으로 거래하지만 시상 순위에서는 빠집니다.</span></div></div>
+      <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+        <span>사람은 나 + 친구 5명(시뮬)입니다. 봇은 시상 순위에서 빠집니다.</span></div></div>
   </div>
-  <div class="sticky"><button class="cta" data-act="create" ${U.codes.length<2||U.busy?'disabled':''}>${U.busy?'만드는 중…':'방 만들기'}</button>
+  <div class="sticky"><button class="cta" data-act="start" ${U.codes.length<2?'disabled':''}>게임 시작</button>
     <div style="text-align:center;font-size:11px;color:var(--dim2);margin-top:10px">
-      월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${(CFG.inflationPerMin*100).toFixed(1)}%/분 · 무상증자 최대 ${(CFG.maxBonusRate*100).toFixed(0)}% · ${CFG.lotSize}주 단위 · 수수료 ${(CFG.feeRate*100).toFixed(2)}%</div></div>`;
-}
-
-/* ---- 1-1. 로비 ---- */
-function vLobby(){
-  const lb = S.lobby || {};
-  const snapPlayers = S.snap && S.snap.players;
-  const players = snapPlayers || lb.players || [];
-  const conns = S.snap? S.snap.connections : lb.connections;
-  const stks = (lb.stocks||[]);
-  return `<div class="hdr"><h1>${esc(S.title||'대기 중')}</h1>
-    <span class="badge" style="background:var(--surf3);color:var(--dim)">${isHost()?'방장':'참가자'}</span></div>
-  ${connBanner()}
-  <div class="pad" style="padding-top:22px">
-    <div class="card" style="padding:20px;text-align:center;border-color:var(--acc)">
-      <div class="lbl" style="margin-bottom:6px">참가코드</div>
-      <div class="m" style="font-size:40px;font-weight:700;letter-spacing:.18em;color:var(--acc)">${esc(S.roomCode||'')}</div>
-      <div style="font-size:12px;color:var(--dim2);margin-top:8px">이 코드를 불러주면 같은 방으로 들어옵니다</div></div></div>
-
-  <div class="pad" style="padding-top:22px;padding-bottom:10px">
-    <div style="display:flex;align-items:center">
-      <div class="grow" style="font-size:14px;font-weight:700">참가자
-        <span style="color:var(--dim2);font-weight:500">${players.length}</span></div>
-      ${conns!==undefined?`<div class="m" style="font-size:11px;color:var(--dim2)">접속 ${conns}</div>`:''}</div></div>
-  ${players.length? `<div style="border-top:1px solid var(--line)">${players.map(p=>{
-      const mine = p.id===S.playerId;
-      return `<div class="row" style="height:52px;background:${mine?'var(--accT)':'transparent'};
-        border-left:${mine?'2px solid var(--acc)':'2px solid transparent'}">
-        <div class="grow" style="display:flex;align-items:center;gap:7px">
-          <span style="font-size:14px;font-weight:${mine?700:500}">${esc(p.name)}</span>
-          ${mine?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div></div>`;}).join('')}</div>`
-    : `<div class="pad"><div style="font-size:12px;color:var(--dim2);padding:4px 2px">아직 아무도 들어오지 않았습니다.</div></div>`}
-
-  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">이 방의 설정</div></div>
-  <div style="border-top:1px solid var(--line)">
-    ${[['거래 종목', stks.map(s=>s.name).join(' · ')||'—'],
-       ['정규장', CFG.durationMin+'분'],
-       ['개장 공모', CFG.ipoSec? CFG.ipoSec+'초':'없음'],
-       ['시작 현금', n(CFG.seedMoney)+'원'],
-       ['월급', n(CFG.salaryAmount)+'원 / '+CFG.salaryIntervalSec+'초'],
-       ['봇', (cfgv('botCount',0))+'명 · 시상 제외']].map(([k,v])=>
-      `<div class="row" style="height:48px"><span class="grow" style="font-size:13px;color:var(--dim)">${k}</span>
-        <span class="m" style="font-size:12px;font-weight:600;text-align:right">${esc(v)}</span></div>`).join('')}</div>
-
-  <div style="height:20px"></div>
-  <div class="sticky">
-    ${isHost()
-      ? `<button class="cta" data-act="start" ${players.length<1||U.busy?'disabled':''}>${U.busy?'시작하는 중…':'게임 시작'}</button>
-         <div style="text-align:center;font-size:11px;color:var(--dim2);margin-top:10px">시작하면 더 들어올 수 없습니다.</div>`
-      : `<div style="text-align:center;padding:8px 0"><div style="font-size:14px;font-weight:600;color:var(--dim)">방장이 시작하기를 기다리는 중</div>
-         <div style="font-size:11px;color:var(--dim2);margin-top:6px">이 화면을 켜둔 채로 기다리세요.</div></div>`}
-    <button class="ghost" style="width:100%;margin-top:10px" data-act="leave">나가기</button></div>`;
+      월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${CFG.inflationPerMin*100}%/분 · 무상증자 최대 ${CFG.maxBonusRate*100}% · ${CFG.lotSize}주 단위 · 수수료 ${(CFG.feeRate*100).toFixed(2)}%</div></div>`;
 }
 
 /* ---- 2. 개장 공모 ---- */
-function vIpo(snap,me){
-  const s = stockOf(U.ipoCode) || snap.stocks[0];
-  if(!s) return '';
-  if(!U.ipoCode) U.ipoCode = s.code;
-  if(!U.ipoPrice) U.ipoPrice = roundTick(s.last*1.05);
-  if(!U.ipoQty)   U.ipoQty   = floorLot(CFG.seedMoney*0.15/U.ipoPrice)||CFG.lotSize;
-  // 서버는 내 청약 내역을 따로 주지 않는다. 예치 총액은 invested-cash 로 정확히 나오고,
-  // 종목별 "내 N주" 는 이 화면이 낸 청약을 세서 보여준다(새로고침하면 이 집계만 사라진다).
-  const reserved = Math.max(0, me.invested - me.cash);
+function vIpo(snap){
+  const s=snap.stocks.find(x=>x.code===U.ipoCode)||snap.stocks[0];
+  if(!U.ipoPrice) U.ipoPrice=roundTick(s.last*1.05);
+  if(!U.ipoQty) U.ipoQty=floorLot(G.cfg.seedMoney*0.15/U.ipoPrice)||CFG.lotSize;
+  const mineBy={}; for(const st of G.stocks) mineBy[st.code]=st.ipoBids.filter(b=>b.playerId==='me')
+    .reduce((a,b)=>a+b.qty,0);
+  const reserved=G.cfg.seedMoney-G.me.cash;
   return `<div style="padding:16px 16px 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;align-items:center;gap:8px">
       <div class="grow" style="font-size:15px;font-weight:600">개장 공모</div>
@@ -584,13 +617,12 @@ function vIpo(snap,me){
     <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
       <div class="m" style="font-size:40px;font-weight:700;color:var(--warn)">${snap.ipoRemainSec}</div>
       <div style="font-size:14px;color:var(--dim)">초 뒤 마감</div><div class="grow"></div>
-      <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(me.cash)}</div></div>
-    <div class="bar" style="margin:12px 0 16px"><i style="width:${CFG.ipoSec?(1-snap.ipoRemainSec/CFG.ipoSec)*100:0}%"></i></div></div>
-  ${connBanner()}
+      <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(G.me.cash)}</div></div>
+    <div class="bar" style="margin:12px 0 16px"><i style="width:${(1-snap.ipoRemainSec/G.cfg.ipoSec)*100}%"></i></div></div>
   <div class="pad" style="padding-top:16px">
     <div style="display:flex;gap:10px;background:var(--warnT);border:1px solid rgba(245,165,36,.35);
       border-radius:14px;padding:14px 16px">
-      <div style="flex-shrink:0;margin-top:1px">${svg(iBolt,20,'var(--warn)',1.5)}</div>
+      <div style="flex-shrink:0;margin-top:1px">${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',20,'var(--warn)',1.5)}</div>
       <div><div style="font-size:14px;font-weight:700;color:var(--warn)">청약하지 않으면 주식 0주로 시작합니다</div>
       <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:5px">주식이 없으면 매분 들어오는
         <b style="color:var(--text)">무상증자를 한 주도 받지 못하고</b>, 인플레로 오르는 값도 못 탑니다.</div></div></div></div>
@@ -598,20 +630,20 @@ function vIpo(snap,me){
     <div class="grow" style="font-size:14px;font-weight:700">종목별 청약 현황</div>
     <div class="m" style="font-size:11px;color:var(--dim2)">예치 ${n(reserved)}</div></div>
   <div style="border-top:1px solid var(--line)">${snap.stocks.map(st=>{
-    const demand = st.ipoDemand||0, rate = st.float? demand/st.float : 0, mine = S.myIpoBids[st.code]||0;
+    const rate=st.float? st.ipoDemand/st.float : 0, mine=mineBy[st.code]||0;
     return `<button data-act="ipoPick" data-v="${st.code}" class="row" style="height:64px;width:100%;text-align:left;
       background:${st.code===U.ipoCode?'var(--accT)':'transparent'};border-left:${st.code===U.ipoCode?'2px solid var(--acc)':'2px solid transparent'}">
       ${dot(st.color)}
       <div class="grow"><div style="display:flex;align-items:center;gap:6px">
-        <span style="font-size:15px;font-weight:600">${esc(st.name)}</span>
+        <span style="font-size:15px;font-weight:600">${st.name}</span>
         ${mine?`<span class="badge m" style="background:var(--acc);color:var(--ink)">내 ${n(mine)}주</span>`:''}</div>
-        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">초기가 ${n(st.open||st.last)} · 발행 ${n(st.float)}주</div></div>
-      <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(demand)}주</div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">초기가 ${n(st.open)} · 발행 ${n(st.float)}주</div></div>
+      <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(st.ipoDemand)}주</div>
         <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${rate>=1?'var(--up)':'var(--dim2)'}">청약률 ${rate.toFixed(1)}배</div></div>
     </button>`;}).join('')}</div>
   <div class="sticky">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      ${dot(s.color)}<div class="grow" style="font-size:15px;font-weight:700">${esc(s.name)} 청약</div>
+      ${dot(s.color)}<div class="grow" style="font-size:15px;font-weight:700">${s.name} 청약</div>
       <div class="m" style="font-size:11px;color:var(--dim2)">호가 ${tickSize(U.ipoPrice)}원 · ${CFG.lotSize}주 단위</div></div>
     <div class="step"><span style="font-size:11px;color:var(--dim2);width:44px">가격</span>
       <span class="v m">${n(U.ipoPrice)}</span>
@@ -625,36 +657,32 @@ function vIpo(snap,me){
       <div class="m" style="font-size:14px;font-weight:700">${n(U.ipoPrice*U.ipoQty)}원</div></div>
     <button class="cta" data-act="ipoBid">청약하기</button></div>`;
 }
-</script>
 
-<script>
 /* ---- 3. 전체 시황 ---- */
 function vMarket(snap,me){
-  const hasMe = !!S.me;
   const sorted=[...snap.stocks].sort((a,b)=> U.sort==='chg'? b.changePct-a.changePct : b.vsFairPct-a.vsFairPct);
-  // 순위표는 상위 20명까지만 실려 온다(대역폭). 내가 거기 없으면 내 줄을 따로 붙인다.
-  const inTop = hasMe && snap.ranking.some(p=>p.id===me.id);
+  const bonusQty = G.stocks.reduce((a,s)=>a+s.issued,0);
   return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;align-items:center;gap:8px">
-      <div class="grow" style="font-size:15px;font-weight:600">${esc(S.title||'모의주식 챌린지')}</div>
+      <div class="grow" style="font-size:15px;font-weight:600">동문회 챌린지</div>
       <span class="badge" style="background:var(--upT);color:var(--up);gap:5px;letter-spacing:.06em">
         <span class="dot" style="width:6px;height:6px;background:var(--up)"></span>LIVE</span>
-      <span class="m" style="font-size:11px;color:var(--dim2)">접속 ${snap.connections}</span></div>
+      <span class="m" style="font-size:11px;color:var(--dim2)">더미 400ms</span></div>
     <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
       <div class="m" style="font-size:34px;font-weight:700">${clk(snap.remainSec)}</div>
       <div style="font-size:13px;color:var(--dim)">남음</div><div class="grow"></div>
       <div style="font-size:12px;color:var(--dim2)">사람 ${snap.humanCount} · 봇 ${snap.playerCount-snap.humanCount}</div></div>
-    <div class="bar" style="margin:12px 0 10px"><i style="width:${Math.min(100,snap.elapsedSec/(CFG.durationMin*60+CFG.ipoSec)*100)}%"></i></div>
+    <div class="bar" style="margin:12px 0 10px"><i style="width:${snap.elapsedSec/(G.cfg.durationMin*60)*100}%"></i></div>
     <div style="display:flex;align-items:center;padding-bottom:12px">
-      <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${(CFG.inflationPerMin*100).toFixed(1)}%/분</span>
-      ${isHost()?`<button data-act="end" style="height:32px;padding:0 12px;border-radius:8px;
-        border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button>`:''}</div></div>
-  ${connBanner()}${pausedBanner(snap)}
+      <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(G.cfg.salaryAmount)}/분 · 인플레 ${G.cfg.inflationPerMin*100}%/분</span>
+      <button data-act="go" data-v="result" style="height:32px;padding:0 12px;border-radius:8px;
+        border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button></div></div>
+
   ${newsBanner(snap)}
-  ${hasMe?`<div class="pad" style="padding-top:14px">
+  <div class="pad" style="padding-top:14px">
     <div class="card" style="padding:14px 16px 0">
       <div style="display:flex;align-items:center"><div class="grow lbl" style="margin:0">내 총자산</div>
-        <span class="badge m" style="background:var(--accT);color:var(--acc)">${me.rank||'-'}위 / ${me.rankTotal}명</span></div>
+        <span class="badge m" style="background:var(--accT);color:var(--acc)">${me.rank}위 / ${me.rankTotal}명</span></div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
         <div class="m" style="font-size:28px;font-weight:700">${n(me.nav)}</div>
         <div style="font-size:14px;color:var(--dim)">원</div></div>
@@ -670,16 +698,16 @@ function vMarket(snap,me){
             <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
       <div style="height:1px;background:var(--line)"></div>
       <div style="display:flex;align-items:center;padding:12px 0 10px">
-        <div class="grow lbl" style="margin:0">분당 정산 · ${salaryCount()}회</div>
-        <span class="badge m" style="background:var(--surf3);color:var(--dim)">다음 ${clk(nextSalarySec())}</span></div>
+        <div class="grow lbl" style="margin:0">분당 정산 · ${G.salaryCount}회</div>
+        <span class="badge m" style="background:var(--surf3);color:var(--dim)">다음 ${clk(G.cfg.salaryIntervalSec-(snap.elapsedSec%G.cfg.salaryIntervalSec))}</span></div>
       <div style="display:flex;gap:8px;padding-bottom:14px">
         <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
-          <div style="font-size:11px;color:var(--dim2)">월급 · ${n(CFG.salaryAmount)}/분</div>
+          <div style="font-size:11px;color:var(--dim2)">월급 · ${n(G.cfg.salaryAmount)}/분</div>
           <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">+${n(me.salaryTotal)}</div></div>
         <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
           <div style="font-size:11px;color:var(--dim2)">내 보유 주식</div>
           <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">${n(me.holdings.reduce((a,h)=>a+h.qty,0))}주</div></div></div>
-    </div></div>`:''}
+    </div></div>
 
   <div class="pad" style="padding-top:22px;padding-bottom:10px">
     <div style="display:flex;align-items:center;gap:8px">
@@ -688,13 +716,13 @@ function vMarket(snap,me){
         aria-pressed="${U.sort===k}" style="height:32px;padding:0 10px;border-radius:8px;font-size:11px;font-weight:600;
         background:${U.sort===k?'var(--surf3)':'transparent'};border:1px solid ${U.sort===k?'var(--line2)':'var(--line)'};
         color:${U.sort===k?'var(--text)':'var(--dim2)'}">${t}</button>`).join('')}</div>
-    <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-      <span>인플레로 적정가가 분당 ${(CFG.inflationPerMin*100).toFixed(1)}%씩 오릅니다. 등락률은 얼마나 올랐나, 괴리율은 <b style="color:var(--dim)">적정가보다 비싼가</b>를 말합니다.</span></div></div>
+    <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+      <span>인플레로 적정가가 분당 ${(G.cfg.inflationPerMin*100).toFixed(1)}%씩 오릅니다. 등락률은 얼마나 올랐나, 괴리율은 <b style="color:var(--dim)">적정가보다 비싼가</b>를 말합니다.</span></div></div>
   <div style="border-top:1px solid var(--line)">${sorted.map(s=>`
     <button data-act="stock" data-v="${s.code}" class="row" style="height:66px;width:100%;text-align:left">
       ${dot(s.color)}
       <div class="grow"><div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:15px;font-weight:600">${esc(s.name)}</span>
+          <span style="font-size:15px;font-weight:600">${s.name}</span>
           ${s.issued===0?'<span class="badge" style="background:var(--surf3);color:var(--dim2)">미발행</span>':''}
           ${snap.news.some(nw=>nw.code===s.code)?`<span class="badge" style="background:var(--warnT);color:var(--warn)">뉴스</span>`:''}</div>
         <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">적정 ${n(s.fair)}</div></div>
@@ -704,34 +732,29 @@ function vMarket(snap,me){
     </button>`).join('')}</div>
 
   <div class="pad" style="padding-top:22px;padding-bottom:10px">
-    <div style="font-size:14px;font-weight:700">사람 순위 <span style="color:var(--dim2);font-weight:500;font-size:11px">봇 제외 · 누적 투입 대비 · 상위 ${snap.ranking.length}명</span></div></div>
-  <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>rankRow(p, hasMe&&p.id===me.id)).join('')}
-    ${(hasMe&&!inTop&&me.rank)?rankRow({rank:me.rank,name:me.name,nav:me.nav,
-        pnl:me.nav-me.invested,pnlPct:me.nav/me.invested*100-100}, true):''}</div>
+    <div style="font-size:14px;font-weight:700">사람 순위 <span style="color:var(--dim2);font-weight:500;font-size:11px">봇 제외 · 누적 투입 대비</span></div></div>
+  <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>{const me2=p.id==='me';
+    return `<div class="row" style="height:56px;background:${me2?'var(--accT)':'transparent'};
+      border-left:${me2?'2px solid var(--acc)':'2px solid transparent'}">
+      <div class="m" style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+        font-size:13px;font-weight:700;background:${p.rank===1?'var(--acc)':'var(--surf3)'};
+        color:${p.rank===1?'var(--ink)':'var(--dim)'}">${p.rank}</div>
+      <div class="grow" style="display:flex;align-items:center;gap:7px">
+        <span style="font-size:14px;font-weight:${me2?700:500}">${esc(p.name)}</span>
+        ${me2?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div>
+      <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(p.nav)}</div>
+        <div class="m" style="font-size:11px;font-weight:600;margin-top:1px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${pc(p.pnlPct)}</div></div>
+    </div>`;}).join('')}</div>
   <div style="height:20px"></div>
   ${bottomNav('market')}`;
 }
-function rankRow(p,mine){
-  return `<div class="row" style="height:56px;background:${mine?'var(--accT)':'transparent'};
-    border-left:${mine?'2px solid var(--acc)':'2px solid transparent'}">
-    <div class="m" style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-      font-size:13px;font-weight:700;background:${p.rank===1?'var(--acc)':'var(--surf3)'};
-      color:${p.rank===1?'var(--ink)':'var(--dim)'}">${p.rank}</div>
-    <div class="grow" style="display:flex;align-items:center;gap:7px">
-      <span style="font-size:14px;font-weight:${mine?700:500}">${esc(p.name)}</span>
-      ${mine?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div>
-    <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(p.nav)}</div>
-      <div class="m" style="font-size:11px;font-weight:600;margin-top:1px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${pc(p.pnlPct)}</div></div>
-  </div>`;
-}
+</script>
 
+<script>
 /* ---- 4. 개별 종목 ---- */
 function vStock(snap,me){
-  const s=stockOf(U.code)||snap.stocks[0];
-  if(!s) return '';
-  const hasMe=!!S.me, trading=snap.phase==='trading';
+  const s=snap.stocks.find(x=>x.code===U.code)||snap.stocks[0];
   if(!U.price) U.price=s.last;
-  if(!U.qty)   U.qty=CFG.lotSize;
   const hold=me.holdings.find(h=>h.code===s.code);
   const myOrders=me.openOrders.filter(o=>o.code===s.code);
   const tick=tickSize(s.last);
@@ -740,7 +763,7 @@ function vStock(snap,me){
   const px=U.market?s.last:U.price;
   const maxBuy=Math.min(tr.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate))));
   const maxSell=tr.maxSellQty;
-  const amt=px*U.qty;
+  const amt=(U.market?s.last:U.price)*U.qty;
   const mineAt={}; for(const o of myOrders) mineAt[o.price]=(mineAt[o.price]||0)+o.qty;
   const maxQ=Math.max(1,...s.depth.bids.map(d=>d.qty),...s.depth.asks.map(d=>d.qty));
   const qmap=arr=>Object.fromEntries(arr.map(d=>[d.price,d.qty]));
@@ -748,7 +771,7 @@ function vStock(snap,me){
   const priceCell=(p,side,best)=>`<div class="pcell" style="background:${best?'var(--upT)':'var(--surf)'};
       border-left:1px solid ${best?'var(--up)':'var(--line)'}">
       <div class="m" style="font-size:14px;font-weight:${best?700:600};color:${side==='a'?'var(--down)':'var(--up)'}">${n(p)}</div>
-      <div class="m" style="font-size:9px;color:var(--dim2)">${s.open?pc((p/s.open-1)*100):'—'}</div></div>`;
+      <div class="m" style="font-size:9px;color:var(--dim2)">${pc((p/s.open-1)*100)}</div></div>`;
   let ladder='';
   for(let i=10;i>=1;i--){ const p=s.last+i*tick, q=ask[p];
     ladder+=`<button data-act="px" data-v="${p}" class="depthrow" style="width:100%;text-align:left">
@@ -767,14 +790,14 @@ function vStock(snap,me){
         <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}
         ${mine?`<span class="badge m" style="position:relative;background:var(--acc);color:var(--ink)">내 ${n(mine)}</span>`:''}</span></button>`; }
 
-  const fills=(snap.tape||[]).filter(t=>t.code===s.code).slice(-14).reverse();
+  const fills=G.tape.filter(t=>t.code===s.code).slice(-14).reverse();
   const body = U.tab==='호가' ? `
     <div style="display:flex;align-items:center;height:34px;padding:8px 16px 0">
       <span style="flex:1;text-align:right;padding-right:12px;font-size:10px;color:var(--dim2);font-weight:600">매도 잔량</span>
       <span style="flex:0 0 104px;text-align:center;font-size:10px;color:var(--dim2);font-weight:600">호가 10단계</span>
       <span style="flex:1;padding-left:12px;font-size:10px;color:var(--dim2);font-weight:600">매수 잔량</span></div>
     <div class="pad" style="border-top:1px solid var(--line)">${ladder}</div>
-    <div class="pad"><div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
+    <div class="pad"><div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
       <span>빈 칸은 그 가격에 주문이 없다는 뜻입니다. 호가를 누르면 주문 가격에 들어갑니다.</span></div></div>`
   : U.tab==='차트' ? `
     <div class="pad" style="padding-top:14px">
@@ -785,7 +808,7 @@ function vStock(snap,me){
           <span style="font-size:11px;color:var(--dim)">적정가</span></span>
         <span class="grow"></span><span class="m" style="font-size:10px;color:var(--dim2)">1초 1점</span></div>
       <canvas id="chart"></canvas>
-      <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
+      <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
         <span>두 선의 간격이 거품의 크기입니다. 지금은 적정가보다 ${p1(s.vsFairPct)}.</span></div></div>`
   : `<div style="border-top:1px solid var(--line);margin-top:12px">${fills.length?fills.map(t=>`
       <div class="row" style="height:40px"><span class="m" style="width:52px;font-size:11px;color:var(--dim2)">+${clk(t.t)}</span>
@@ -795,16 +818,15 @@ function vStock(snap,me){
       :`<div style="padding:28px 16px;text-align:center;font-size:12px;color:var(--dim2)">아직 체결이 없습니다</div>`}</div>`;
 
   return `<div class="hdr"><button class="iconbtn" data-act="go" data-v="market" aria-label="뒤로">${iBack}</button>
-    <h1>${dot(s.color)}${esc(s.name)}
+    <h1>${dot(s.color)}${s.name}
       ${s.issued===0?'<span class="badge" style="background:var(--surf3);color:var(--dim2)">미발행</span>':''}</h1>
     <span class="m" style="font-size:14px;font-weight:700;color:var(--acc)">${clk(snap.remainSec)}</span></div>
-  ${connBanner()}
   ${snap.news.filter(nw=>nw.code===s.code).map(nw=>`<div class="pad" style="padding-top:12px">
     <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:11px;
       background:var(--warnT);border:1px solid rgba(245,165,36,.3)">
-      ${svg(iBolt,15,'var(--warn)',1.6)}
+      ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',15,'var(--warn)',1.6)}
       <span class="grow" style="font-size:12px;font-weight:600;line-height:1.4">${esc(nw.headline)}</span>
-      <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${Math.max(0,nw.lifeSec-nw.ageSec)}초</span></div></div>`).join('')}
+      <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${nw.lifeSec-nw.ageSec}초</span></div></div>`).join('')}
   <div style="display:flex;align-items:flex-end;gap:12px;padding:16px 16px 14px">
     <div class="grow">
       <div style="display:flex;align-items:baseline;gap:6px">
@@ -829,7 +851,7 @@ function vStock(snap,me){
         <span class="badge" style="background:${o.side==='buy'?'var(--upT)':'var(--downT)'};color:${o.side==='buy'?'var(--up)':'var(--down)'}">${o.side==='buy'?'매수':'매도'}</span>
         <span class="m" style="font-size:13px;font-weight:600">${n(o.price)} × ${n(o.qty)}주</span></div>
         <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">미체결 · 묶인 현금 ${n(o.side==='buy'?o.price*o.qty:0)}</div></div>
-      <button data-act="cancel" data-v="${o.id}" data-c="${o.code}" style="height:44px;padding:0 14px;border-radius:10px;
+      <button data-act="cancel" data-v="${o.id}" style="height:44px;padding:0 14px;border-radius:10px;
         border:1px solid var(--line2);color:var(--dim);font-size:13px;font-weight:600">취소</button></div>`).join('')}</div>`:''}
   ${hold?`<div class="pad" style="padding-top:4px"><div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px">
     <div><div style="font-size:11px;color:var(--dim2)">내 보유</div>
@@ -837,7 +859,7 @@ function vStock(snap,me){
     <div class="grow"></div><div class="rt"><div style="font-size:11px;color:var(--dim2)">평가손익</div>
       <div class="m" style="font-size:14px;font-weight:700;margin-top:3px;color:${cl(hold.pnl)}">${sg(hold.pnl)} (${pc(hold.pnlPct)})</div></div></div></div>`:''}
   <div style="height:12px"></div>
-  ${(hasMe&&trading)?`<div class="sticky">
+  <div class="sticky">
     <div class="seg" style="margin-bottom:12px">
       <button data-act="set" data-k="market" data-v="0" aria-pressed="${!U.market}">지정가</button>
       <button data-act="set" data-k="market" data-v="1" aria-pressed="${U.market}">시장가</button></div>
@@ -860,24 +882,18 @@ function vStock(snap,me){
       <button data-act="order" data-v="sell" style="flex:1;height:54px;border-radius:13px;background:var(--downT);
         border:1px solid var(--down);color:var(--down);font-size:16px;font-weight:700">매도</button>
       <button data-act="order" data-v="buy" style="flex:1;height:54px;border-radius:13px;background:var(--up);
-        color:#fff;font-size:16px;font-weight:700">매수</button></div></div>`:''}`;
+        color:#fff;font-size:16px;font-weight:700">매수</button></div></div>`;
 }
 
-/* 차트는 GET /api/rooms/{code}/chart 의 history 를 그린다 (1초에 한 점, 최대 1800점). */
 function drawChart(){
   const c=document.getElementById('chart'); if(!c) return;
-  const s=stockOf(U.code); if(!s) return;
-  const hs=(S.chart.code===U.code? S.chart.rows : []) || [];
+  const s=G.stocks.find(x=>x.code===U.code); if(!s||!s.history.length) return;
   const dpr=window.devicePixelRatio||1, w=c.clientWidth, h=200;
   c.width=w*dpr; c.height=h*dpr; const g=c.getContext('2d'); g.scale(dpr,dpr);
   g.clearRect(0,0,w,h);
-  if(hs.length<2){
-    g.fillStyle='#5C6472'; g.font='500 12px "IBM Plex Sans KR",sans-serif'; g.textAlign='center';
-    g.fillText('이력을 모으는 중…',w/2,h/2); return;
-  }
-  const lo=Math.min(...hs.map(p=>Math.min(p.price,p.fair)))*0.99,
+  const hs=s.history, lo=Math.min(...hs.map(p=>Math.min(p.price,p.fair)))*0.99,
         hi=Math.max(...hs.map(p=>Math.max(p.price,p.fair)))*1.01;
-  const X=i=>i/(hs.length-1)*(w-46), Y=v=>(hi-v)/(hi-lo||1)*(h-24)+8;
+  const X=i=>hs.length<2?0:i/(hs.length-1)*(w-46), Y=v=>(hi-v)/(hi-lo||1)*(h-24)+8;
   g.strokeStyle='#2E3540'; g.lineWidth=1; g.beginPath();
   g.moveTo(0,Y(s.open)); g.lineTo(w-46,Y(s.open)); g.stroke();
   g.setLineDash([5,4]); g.strokeStyle='#F5A524'; g.lineWidth=1.6; g.beginPath();
@@ -885,7 +901,7 @@ function drawChart(){
   g.setLineDash([]); g.strokeStyle='#FF4D5E'; g.lineWidth=1.8;
   g.lineJoin='round'; g.beginPath();
   hs.forEach((p,i)=>i?g.lineTo(X(i),Y(p.price)):g.moveTo(X(i),Y(p.price))); g.stroke();
-  g.font='600 10px "IBM Plex Mono",monospace'; g.textBaseline='middle'; g.textAlign='left';
+  g.font='600 10px "IBM Plex Mono",monospace'; g.textBaseline='middle';
   const pill=(v,y,bg,fg)=>{const t=n(v),tw=g.measureText(t).width+10;
     g.fillStyle=bg; g.beginPath(); g.roundRect(w-tw-2,y-9,tw,18,4); g.fill();
     g.fillStyle=fg; g.fillText(t,w-tw+3,y);};
@@ -893,25 +909,20 @@ function drawChart(){
 }
 
 /* ---- 5. 결과 ---- */
-function vResult(snap){
-  // 스냅샷 순위표는 상위 20명까지다. 시상은 /result 의 humanRanking(전원)으로 한다.
-  const rk = (S.result && S.result.humanRanking) || snap.ranking;
-  const stks = (S.result && S.result.stocks) || snap.stocks;
-  const win = rk[0];
-  const myId = S.me? S.me.id : null;
+function vResult(snap,me){
+  const win=snap.ranking[0];
   return `<div class="hdr"><h1>게임 종료</h1>
-    <span class="m" style="font-size:12px;color:var(--dim2)">${CFG.durationMin}분 · 사람 ${snap.humanCount} + 봇 ${snap.playerCount-snap.humanCount}</span></div>
-  ${win?`<div class="pad" style="padding-top:20px">
+    <span class="m" style="font-size:12px;color:var(--dim2)">${G.cfg.durationMin}분 · 사람 ${snap.humanCount} + 봇 ${snap.playerCount-snap.humanCount}</span></div>
+  <div class="pad" style="padding-top:20px">
     <div class="card" style="border-color:var(--acc);border-radius:18px;padding:22px 20px;text-align:center">
       <div style="display:flex;justify-content:center">${svg('M7 4h10v5a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3M9 20h6M12 14v6',32,'var(--acc)',1.5)}</div>
       <div class="lbl" style="margin:10px 0 0">우승</div>
       <div style="font-size:26px;font-weight:700;margin-top:4px">${esc(win.name)}</div>
       <div style="display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:8px">
         <span class="m" style="font-size:20px;font-weight:700">${n(win.nav)}원</span>
-        <span class="m" style="font-size:15px;font-weight:700;color:${cl(win.pnlPct)}">${pc(win.pnlPct)}</span></div></div></div>`:''}
-  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">사람 순위
-    <span style="color:var(--dim2);font-weight:500;font-size:11px">${rk.length}명</span></div></div>
-  <div style="border-top:1px solid var(--line)">${rk.map(p=>{const m2=p.id===myId;
+        <span class="m" style="font-size:15px;font-weight:700;color:${cl(win.pnlPct)}">${pc(win.pnlPct)}</span></div></div></div>
+  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">사람 순위</div></div>
+  <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>{const m2=p.id==='me';
     return `<div class="row" style="height:60px;background:${m2?'var(--accT)':'transparent'};
       border-left:${m2?'2px solid var(--acc)':'2px solid transparent'}">
       <div class="m" style="width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;
@@ -921,24 +932,17 @@ function vResult(snap){
       <div class="rt"><div class="m" style="font-size:15px;font-weight:600">${n(p.nav)}</div>
         <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${sg(p.pnl)} · ${pc(p.pnlPct)}</div></div></div>`;}).join('')}</div>
   <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">종목 결과</div></div>
-  <div style="border-top:1px solid var(--line)">${[...stks].sort((a,b)=>b.changePct-a.changePct).map(s=>`
-    <div class="row" style="height:64px">${dot(s.color||(stockOf(s.code)||{}).color)}
-      <div class="grow"><div style="font-size:14px;font-weight:600">${esc(s.name)}</div>
+  <div style="border-top:1px solid var(--line)">${[...snap.stocks].sort((a,b)=>b.changePct-a.changePct).map(s=>`
+    <div class="row" style="height:64px">${dot(s.color)}
+      <div class="grow"><div style="font-size:14px;font-weight:600">${s.name}</div>
         <div class="m" style="font-size:10px;color:var(--dim2);margin-top:3px;white-space:nowrap">시초 ${n(s.open)} · 고 ${n(s.high)} · 저 ${n(s.low)}</div></div>
       <div class="rt"><div class="m" style="font-size:14px;font-weight:700">${n(s.last)}</div>
         <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${cl(s.changePct)}">${pc(s.changePct)}</div></div>
       <div class="rt" style="width:72px"><div class="m" style="font-size:10px;color:var(--dim2)">거래 ${n(s.volume)}</div>
         <div class="m" style="font-size:10px;color:var(--dim2);margin-top:4px">발행 ${n(s.issued)}</div></div></div>`).join('')}</div>
-  ${(S.result&&S.result.newsLog&&S.result.newsLog.length)?`
-    <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">이 판에 터진 뉴스
-      <span style="color:var(--dim2);font-weight:500">${S.result.newsLog.length}</span></div></div>
-    <div style="border-top:1px solid var(--line)">${S.result.newsLog.map(nw=>`
-      <div class="row" style="height:52px"><span class="m" style="width:52px;font-size:11px;color:var(--dim2)">+${clk(nw.atSec)}</span>
-        <span class="grow" style="font-size:12px;line-height:1.4">${esc(nw.headline)}</span>
-        <span class="m" style="font-size:11px;font-weight:600;color:${cl(nw.impactPct)}">${p1(nw.impactPct)}</span></div>`).join('')}</div>`:''}
   <div class="sticky" style="display:flex;gap:10px">
-    <button class="ghost" style="width:120px;height:54px" data-act="leave">나가기</button>
-    ${isHost()?`<button class="cta" style="flex:1;width:auto" data-act="again" ${U.busy?'disabled':''}>${U.busy?'만드는 중…':'같은 설정으로 다시'}</button>`:''}</div>`;
+    <button class="ghost" style="width:120px;height:54px" data-act="go" data-v="setup">설정으로</button>
+    <button class="cta" style="flex:1;width:auto" data-act="again">같은 설정으로 다시</button></div>`;
 }
 
 /* ---- 하단 탭 ---- */
@@ -950,21 +954,21 @@ function bottomNav(active){
   return `<div style="position:sticky;bottom:0;display:flex;border-top:1px solid var(--line);
     background:var(--surf);padding:4px 0 calc(8px + env(safe-area-inset-bottom));z-index:6">
     ${item('market','시황',c=>svg('M3 12h4l3-8 4 16 3-8h4',20,c,1.7))}
-    ${item('assets','내 자산',c=>svg(iCard,20,c,1.5))}</div>`;
+    ${item('assets','내 자산',c=>svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',20,c,1.5))}</div>`;
 }
 
 /* ---- 내 자산 ---- */
 function vPortfolio(snap,me){
+  const totalBonus=me.holdings.reduce((a,h)=>a+h.bonus,0);
   const evalTotal=me.nav-me.cash-me.lockedCash;
-  const totalQty=me.holdings.reduce((a,h)=>a+h.qty,0);
   const holds=[...me.holdings].sort((a,b)=>b.evalAmount-a.evalAmount);
   return `<div class="hdr"><h1>내 자산</h1>
     <span class="m" style="font-size:14px;font-weight:700;color:var(--acc)">${clk(snap.remainSec)}</span></div>
-  ${connBanner()}
+
   <div class="pad" style="padding-top:16px">
     <div class="card" style="padding:14px 16px 0">
       <div style="display:flex;align-items:center"><div class="grow lbl" style="margin:0">총자산</div>
-        <span class="badge m" style="background:var(--accT);color:var(--acc)">${me.rank||'-'}위 / ${me.rankTotal}명</span></div>
+        <span class="badge m" style="background:var(--accT);color:var(--acc)">${me.rank}위 / ${me.rankTotal}명</span></div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
         <div class="m" style="font-size:28px;font-weight:700">${n(me.nav)}</div>
         <div style="font-size:14px;color:var(--dim)">원</div></div>
@@ -976,8 +980,7 @@ function vPortfolio(snap,me){
       <div style="display:flex;flex-wrap:wrap">
         ${[['현금',n(me.cash),'var(--text)'],['묶인 현금',n(me.lockedCash),'var(--dim)'],
            ['평가금액',n(evalTotal),'var(--text)'],['실현손익',sg(me.realized),cl(me.realized)],
-           ['받은 월급',sg(me.salaryTotal),'var(--acc)'],
-           ['보유 주식',n(totalQty)+'주',totalQty?'var(--acc)':'var(--dim2)']]
+           ['받은 월급',sg(me.salaryTotal),'var(--acc)'],['무상증자',totalBonus?'+'+n(totalBonus)+'주':'0주',totalBonus?'var(--acc)':'var(--dim2)']]
           .map(([k,v,c])=>`<div style="width:50%;padding:11px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
             <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
       <div style="height:14px"></div></div></div>
@@ -987,17 +990,17 @@ function vPortfolio(snap,me){
       <div class="grow" style="font-size:14px;font-weight:700">보유 종목
         <span style="color:var(--dim2);font-weight:500">${holds.length}</span></div>
       <div class="m" style="font-size:11px;color:var(--dim2)">평가 ${n(evalTotal)}</div></div></div>
-  ${holds.length? `<div style="border-top:1px solid var(--line)">${holds.map(h=>{
-    const st=stockOf(h.code)||{};
-    return `<button data-act="stock" data-v="${h.code}" class="row" style="height:74px;width:100%;text-align:left">
-      ${dot(st.color)}
+  ${holds.length? `<div style="border-top:1px solid var(--line)">${holds.map(h=>`
+    <button data-act="stock" data-v="${h.code}" class="row" style="height:74px;width:100%;text-align:left">
+      ${dot(h.color)}
       <div class="grow"><div style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:15px;font-weight:600">${esc(h.name)}</span>
+          <span style="font-size:15px;font-weight:600">${h.name}</span>
+          ${h.bonus?`<span class="badge m" style="background:var(--accT);color:var(--acc)">증자 +${n(h.bonus)}</span>`:''}
           ${h.locked?`<span class="badge m" style="background:var(--surf3);color:var(--dim2)">매도중 ${n(h.locked)}</span>`:''}</div>
         <div class="m" style="font-size:11px;color:var(--dim2);margin-top:4px">${n(h.qty)}주 · 평단 ${n(h.avgPrice)} → ${n(h.last)}</div></div>
       <div class="rt"><div class="m" style="font-size:15px;font-weight:700">${n(h.evalAmount)}</div>
         <div class="m" style="font-size:12px;font-weight:600;margin-top:3px;color:${cl(h.pnl)}">${sg(h.pnl)} · ${pc(h.pnlPct)}</div></div>
-    </button>`;}).join('')}</div>`
+    </button>`).join('')}</div>`
   : `<div class="pad"><div class="card" style="padding:24px 20px;text-align:center">
       <div style="font-size:14px;font-weight:600;color:var(--dim)">보유한 주식이 없습니다</div>
       <div style="font-size:12px;color:var(--dim2);line-height:1.6;margin-top:8px">
@@ -1013,141 +1016,84 @@ function vPortfolio(snap,me){
     <div class="row" style="height:64px">
       <div class="grow"><div style="display:flex;align-items:center;gap:6px">
           <span class="badge" style="background:${o.side==='buy'?'var(--upT)':'var(--downT)'};color:${o.side==='buy'?'var(--up)':'var(--down)'}">${o.side==='buy'?'매수':'매도'}</span>
-          <span style="font-size:14px;font-weight:600">${esc(o.name)}</span></div>
+          <span style="font-size:14px;font-weight:600">${o.name}</span></div>
         <div class="m" style="font-size:11px;color:var(--dim2);margin-top:4px">${n(o.price)} × ${n(o.qty)}주 = ${n(o.price*o.qty)}원</div></div>
-      <button data-act="cancel" data-v="${o.id}" data-c="${o.code}" style="height:44px;padding:0 14px;border-radius:10px;
+      <button data-act="cancel" data-v="${o.id}" style="height:44px;padding:0 14px;border-radius:10px;
         border:1px solid var(--line2);color:var(--dim);font-size:13px;font-weight:600">취소</button></div>`).join('')}</div>`
   : `<div class="pad"><div style="font-size:12px;color:var(--dim2);padding:4px 2px 0">걸어둔 주문이 없습니다.</div></div>`}
   <div style="height:20px"></div>
   ${bottomNav('assets')}`;
 }
-</script>
 
-<script>
-/* ---- 라우터 ---- */
-function go(v){ U.view=v; if(v==='stock') U.tab='호가'; view.scrollTop=0; render(); }
-
+/* ---- 라우터 · 루프 ---- */
+function go(v){ U.view=v; if(v==='stock'){U.tab='호가';} view.scrollTop=0; render(); }
 function render(){
-  const snap=S.snap, me=S.me||EMPTY_ME;
+  const snap=API.snapshot(), me = G.me ? API.me() : null;
   const st=view.scrollTop;
-  let html;
-  if(U.view==='home')       html=vHome();
-  else if(U.view==='join')  html=vJoin();
-  else if(U.view==='setup') html=vSetup();
-  else if(U.view==='lobby') html=vLobby();
-  else if(!snap)            html=vHome();
-  else if(U.view==='ipo')   html=vIpo(snap,me);
-  else if(U.view==='stock') html=vStock(snap,me);
-  else if(U.view==='assets')html=vPortfolio(snap,me);
-  else if(U.view==='result')html=vResult(snap);
-  else                      html=vMarket(snap,me);
-  view.innerHTML=html;
+  view.innerHTML = U.view==='setup'? vSetup()
+    : U.view==='ipo'? vIpo(snap)
+    : U.view==='assets'? vPortfolio(snap,me)
+    : U.view==='stock'? vStock(snap,me)
+    : U.view==='result'? vResult(snap,me)
+    : vMarket(snap,me);
   view.scrollTop=st;
   if(U.view==='stock'&&U.tab==='차트') drawChart();
 }
-
-// 차트 이력은 스냅샷에 실려 오지 않는다(크기). 보고 있는 동안만 따로 받아 온다.
-setInterval(()=>{ if(U.view==='stock'&&U.tab==='차트'&&U.code) loadChart(U.code); }, 2000);
+let last=performance.now();
+setInterval(()=>{
+  const now=performance.now(); const dt=Math.min(1,(now-last)/1000); last=now;
+  if(G.phase==='ipo'||G.phase==='trading'){
+    tick(dt);
+    if(G.phase==='ipo'&&U.view!=='ipo') U.view='ipo';
+    if(G.phase==='ended'&&U.view!=='result') { U.view='result'; }
+    render();
+  }
+},250);
 
 /* ---- 입력 ---- */
-document.addEventListener('input', e=>{
-  const el=e.target.closest('[data-in]'); if(!el) return;
-  U[el.dataset.in]=el.value;              // 다시 그리면 포커스가 날아가므로 여기서는 render 하지 않는다
-});
-
-async function busy(fn){
-  if(U.busy) return;
-  U.busy=true; render();
-  try{ await fn(); }
-  catch(e){ toastErr(e); }
-  finally{ U.busy=false; render(); }
-}
-
-async function submitOrder(code,side,price,qty,market){
-  return api('POST', R('/orders'), {code, side, qty, price: market? 'market' : price});
-}
-
-document.addEventListener('click', async e=>{
+document.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]'); if(!b||b.disabled) return;
   const a=b.dataset.act, v=b.dataset.v, k=b.dataset.k;
-  const me=S.me||EMPTY_ME;
-
+  const snap=API.snapshot(); const s=G.stocks.find(x=>x.code===U.code);
   if(a==='set'){ const num=!isNaN(Number(v))&&k!=='tab'&&k!=='sort';
     U[k]= k==='market'? v==='1' : (num? Number(v) : v);
-    if(k==='tab'&&v==='차트'){ loadChart(U.code); setTimeout(drawChart,0); } }
+    if(k==='tab'&&v==='차트') setTimeout(drawChart,0); }
   else if(a==='tog'){ U.codes = U.codes.includes(v)? U.codes.filter(c=>c!==v) : [...U.codes,v]; }
-  else if(a==='go'){ return go(v); }
-  else if(a==='goJoin'){ return go('join'); }
-
-  else if(a==='join'){
-    if(!U.joinCode.trim()) return toastErr({code:'NO_CODE',message:'참가코드를 넣어주세요'});
-    return busy(async()=>{ await joinRoom(U.joinCode, U.name); U.view='lobby'; });
-  }
-  else if(a==='create'){
-    if(U.codes.length<2) return;
-    return busy(async()=>{
-      await createRoom({stockCodes:U.codes, durationMin:U.dur, ipoSec:U.ipoSec,
-                        seedMoney:U.seed, botCount:U.bots}, U.title||'모의주식 챌린지', U.name);
-      U.view='lobby';
-    });
-  }
-  else if(a==='start'){ return busy(async()=>{ await api('POST', R('/start')); }); }
-  else if(a==='end'){   return busy(async()=>{ await api('POST', R('/end')); }); }
-  else if(a==='leave'){ forget(); U.view='home'; return render(); }
-  else if(a==='again'){
-    const prev=Object.assign({}, (S.lobby&&S.lobby.config)||{});
-    delete prev.seed;                      // 같은 시드를 물려주면 똑같은 판이 그대로 재현된다
-    const name=S.myName, title=S.title;
-    return busy(async()=>{ forget(); await createRoom(prev,title,name); U.view='lobby'; });
-  }
-
+  else if(a==='start'){ if(U.codes.length<2) return;
+    API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,seedMoney:U.seed,botCount:U.bots});
+    U.ipoPrice=0; U.ipoQty=0; U.ipoCode=U.codes[0]; go(G.phase==='ipo'?'ipo':'market'); return; }
   else if(a==='ipoPick'){ U.ipoCode=v; U.ipoPrice=0; U.ipoQty=0; }
   else if(a==='ipoP'){ U.ipoPrice=Math.max(tickSize(U.ipoPrice),roundTick(U.ipoPrice+Number(v)*tickSize(U.ipoPrice))); }
   else if(a==='ipoQ'){ U.ipoQty=Math.max(CFG.lotSize,U.ipoQty+Number(v)*CFG.lotSize); }
-  else if(a==='ipoBid'){
-    const code=U.ipoCode, price=U.ipoPrice, qty=U.ipoQty;
-    return busy(async()=>{
-      const r=await api('POST', R('/ipo-bids'), {code, price, qty});
-      S.myIpoBids[r.code]=(S.myIpoBids[r.code]||0)+r.qty;
-      const st=stockOf(r.code);
-      showToast(`<div style="font-size:13px;font-weight:700">청약 접수 · ${esc(st?st.name:r.code)}</div>
-        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">${n(r.price)} × ${n(r.qty)}주 · 증거금 ${n(r.reserved)}원 예치</div>`,2600);
-    });
-  }
-
-  else if(a==='stock'){ const st=stockOf(v); if(!st) return;
-    U.code=v; U.price=st.last; U.qty=CFG.lotSize; return go('stock'); }
+  else if(a==='ipoBid'){ const r=API.ipoBid(U.ipoCode,U.ipoPrice,U.ipoQty);
+    if(r.error) toastErr(r.error); else showToast(`<div style="font-size:13px;font-weight:700">청약 접수 · ${esc(G.stocks.find(x=>x.code===U.ipoCode).name)}</div>
+      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">${n(r.price)} × ${n(r.qty)}주 · 증거금 ${n(r.reserved)}원 예치</div>`,2600); }
+  else if(a==='stock'){ U.code=v; U.price=G.stocks.find(x=>x.code===v).last; U.qty=CFG.lotSize; go('stock'); return; }
+  else if(a==='go'){ if(v==='result'){ G.phase='ended'; } if(v==='setup'){ G.phase='lobby'; } go(v); return; }
+  else if(a==='again'){ API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,seedMoney:U.seed,botCount:U.bots});
+    U.ipoPrice=0; U.ipoQty=0; go(G.phase==='ipo'?'ipo':'market'); return; }
   else if(a==='px'){ U.price=Number(v); U.market=false; }
   else if(a==='p'){ U.price=Math.max(tickSize(U.price),roundTick(U.price+Number(v)*tickSize(U.price))); }
   else if(a==='q'){ U.qty=Math.max(CFG.lotSize,U.qty+Number(v)*CFG.lotSize); }
-  else if(a==='ratio'){ const st=stockOf(U.code); if(!st) return;
-    const px=U.market? st.last : U.price;
+  else if(a==='ratio'){ const me=API.me(); const px=U.market? s.last : U.price;
     U.qty=Math.max(CFG.lotSize,floorLot(me.cash/(px*(1+CFG.feeRate))*Number(v)/100)); }
-
   else if(a==='newsBuy'||a==='newsSell'){
-    const st=stockOf(v); if(!st) return;
-    const t=me.tradable.find(x=>x.code===v)||{maxBuyQty:0,maxSellQty:0};
+    const st=G.stocks.find(x=>x.code===v), me2=API.me();
+    const t=me2.tradable.find(x=>x.code===v)||{maxBuyQty:0,maxSellQty:0};
     const buy=a==='newsBuy';
     const px=roundTick(st.last*(buy?1.02:0.98));
-    const cap=buy? Math.min(t.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate)))) : t.maxSellQty;
+    const cap=buy? Math.min(t.maxBuyQty, floorLot(me2.cash/(px*(1+CFG.feeRate)))) : t.maxSellQty;
     const qty=Math.max(CFG.lotSize, floorLot(cap*0.5));
-    if(cap<CFG.lotSize) return toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
-      message:buy?'현금이 부족합니다':'보유 주식이 부족합니다'});
-    return busy(async()=>{ await submitOrder(v, buy?'buy':'sell', px, qty, false); });
+    if(cap<CFG.lotSize){ toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
+      message:buy?'현금이 부족합니다':'보유 주식이 부족합니다'}); }
+    else { const r=API.order(v,buy?'buy':'sell',px,qty,false);
+      if(r.error) toastErr(r.error); }
   }
-  else if(a==='cancel'){
-    const code=b.dataset.c, id=v;
-    return busy(async()=>{ await api('POST', R('/orders/cancel'), {code, orderId:id}); });
-  }
-  else if(a==='order'){
-    const code=U.code, side=v, market=U.market, price=U.price, qty=U.qty;
-    return busy(async()=>{
-      const r=await submitOrder(code, side, price, qty, market);
-      if(!r.filled&&!r.resting) toastErr({code:'NOT_FILLED',message:'체결도 등록도 되지 않았습니다'});
-    });
-  }
+  else if(a==='cancel'){ API.cancel(v); }
+  else if(a==='order'){ const r=API.order(U.code,v,U.market?null:U.price,U.qty,U.market);
+    if(r.error) toastErr(r.error);
+    else if(!r.filled&&!r.resting) toastErr({code:'NOT_FILLED',message:'체결도 등록도 되지 않았습니다'}); }
   render();
 });
-
-boot();
+render();
 </script>
