@@ -270,7 +270,7 @@ POST /api/rooms/{code}/join
 git fetch origin claude/dreamy-knuth-bgjjrp
 git merge origin/claude/dreamy-knuth-bgjjrp     # 파일 충돌 없음 (design/ 과 src/ 가 분리되어 있음)
 node server.js                                   # localhost:3000
-npm test                                         # 69개 (엔진 27 + API 42)
+npm test                                         # 83개 (엔진 27 + 방 14 + API 42)
 node tests/load.test.js 50                       # 50명 동시접속 부하 테스트
 ```
 

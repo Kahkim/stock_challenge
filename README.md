@@ -9,7 +9,7 @@
 
 ```bash
 node server.js               # http://localhost:3000 — 화면까지 같이 뜬다
-npm test                     # 엔진 27 + API 42 = 69개
+npm test                     # 엔진 27 + 방 14 + API 42 = 83개
 node tests/load.test.js 50   # 사람 50명 동시접속 부하 테스트
 node tools/balance.js        # 설정을 바꾼 뒤 밸런스가 깨지지 않았는지 측정
 ```
@@ -31,6 +31,7 @@ node tools/balance.js        # 설정을 바꾼 뒤 밸런스가 깨지지 않�
 | **결과 내려받기** | `GET /result.csv` (UTF-8 BOM, 엑셀에서 한글 안 깨짐) |
 | **요청 제한** | 참가자 토큰 기준 초당 12건. 행사장 WiFi 는 50명이 한 IP 를 쓰므로 IP 기준은 느슨합니다 |
 | **판 재현** | `config.seed` 를 고정하면 같은 게임이 그대로 재현됩니다. 리허설용 |
+| **방 자동 정리** | 마감 뒤(또는 마지막 활동 뒤) 4시간이 지난 방을 걷어냅니다 (`ROOM_IDLE_MS`). 방이 걷히면 결과 조회도 닫히니 **시상·정산은 그 안에** 끝내세요 |
 
 ## 성능
 
@@ -120,6 +121,7 @@ src/ratelimit.js     토큰 버킷 요청 제한
 public/index.html    화면 — 서버가 같은 주소에서 서빙한다 (빌드 없는 단일 파일)
 prototype/           서버 없이 혼자 도는 화면 데모 (더미 엔진 내장, 디자인 확인용)
 tests/engine.test.js 엔진 27개
+tests/rooms.test.js  방 정리(sweep) 14개
 tests/api.test.js    API 42개
 tests/load.test.js   50명 동시접속 부하
 tools/balance.js     밸런스 측정 도구

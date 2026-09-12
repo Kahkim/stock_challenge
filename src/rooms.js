@@ -14,6 +14,31 @@ function makeCode(len = 6) {
 }
 const token = () => crypto.randomBytes(16).toString('hex');
 
+/**
+ * 방을 걷어내는 기준. 게임이 끝난 뒤(또는 마지막 활동 뒤) 이만큼 지나면 정리한다.
+ *
+ * 기본 4시간은 "행사가 끝나고 시상·정산까지 마칠 시간" 이다. 방이 걷히면 결과 조회와
+ * result.csv 도 404 가 되므로 이 값이 결과를 받아갈 수 있는 시한이기도 하다.
+ * 리허설에서 정리 동작을 짧게 확인하려면 ROOM_IDLE_MS 를 낮추면 된다.
+ */
+const ROOM_IDLE_MS = (() => {
+  const DEFAULT = 4 * 3600 * 1000;
+  const raw = Number(process.env.ROOM_IDLE_MS);
+  // 음수나 0 을 그대로 받으면 하한(1초)으로 눌려서 진행 중인 방까지 즉시 걷힌다.
+  // 오타 하나로 행사가 날아가므로 말이 안 되는 값은 기본값으로 돌려보낸다.
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT;
+  return Math.max(1000, raw);
+})();
+
+/**
+ * 훑는 주기. 기준보다 드물게 훑으면 기준을 낮춰도 그만큼 늦게 걷힌다 —
+ * ROOM_IDLE_MS=1분 으로 두고 10분마다 훑으면 최대 11분이 걸린다.
+ * 그래서 기준의 절반으로 두되, 평상시(4시간)에는 10분을 넘기지 않는다.
+ */
+function sweepIntervalMs(idleMs = ROOM_IDLE_MS) {
+  return Math.max(1000, Math.min(10 * 60 * 1000, Math.floor(idleMs / 2)));
+}
+
 /** 코드가 붙은 오류 */
 function cfgErr(code, message) {
   const e = new Error(message);
@@ -304,8 +329,18 @@ class RoomStore {
 
   get(code) { return this.rooms.get(String(code || '').toUpperCase()) || null; }
 
-  /** 오래되고 끝난 방을 정리한다 */
-  sweep(maxIdleMs = 4 * 3600 * 1000) {
+  /**
+   * 오래되고 끝난 방을 정리한다.
+   *
+   * 두 조건 중 하나라도 맞으면 지운다.
+   *   done  — 마감된 방이 endedAt 으로부터 maxIdleMs 를 넘겼다
+   *   stale — 어떤 단계든 lastActivity 로부터 maxIdleMs 를 넘겼다 (버려진 로비까지 걷힌다)
+   *
+   * lastActivity 는 참가코드로 방을 찾는 모든 요청에서 갱신된다(server.js 가 라우팅 직전에
+   * 한 번 찍는다). 다만 이미 열려 있는 SSE 스트림은 새 요청이 아니라서 갱신하지 않으므로,
+   * SSE 만 붙여 놓고 다른 요청을 전혀 보내지 않는 현황판은 기준 시간이 지나면 걷힌다.
+   */
+  sweep(maxIdleMs = ROOM_IDLE_MS) {
     const now = Date.now();
     for (const [code, r] of this.rooms) {
       const done = r.game.phase === PHASE.ENDED && r.game.endedAt && now - r.game.endedAt > maxIdleMs;
@@ -315,4 +350,4 @@ class RoomStore {
   }
 }
 
-module.exports = { Room, RoomStore, sanitizeConfig, makeCode };
+module.exports = { Room, RoomStore, sanitizeConfig, makeCode, ROOM_IDLE_MS, sweepIntervalMs };

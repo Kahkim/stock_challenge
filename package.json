@@ -5,8 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/engine.test.js && node tests/api.test.js",
+    "test": "node tests/engine.test.js && node tests/rooms.test.js && node tests/api.test.js",
     "test:engine": "node tests/engine.test.js",
+    "test:rooms": "node tests/rooms.test.js",
     "test:api": "node tests/api.test.js",
     "balance": "node tools/balance.js"
   },
