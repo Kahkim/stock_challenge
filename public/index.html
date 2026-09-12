@@ -62,13 +62,31 @@
   .tabs button[aria-pressed="true"]{background:var(--surf3);color:var(--text);font-weight:700}
   .bar{height:3px;border-radius:2px;background:var(--surf3);display:flex;overflow:hidden}
   .bar i{background:var(--acc);border-radius:2px;display:block}
+  /* 바깥은 계속 통과시킨다 — 토스트가 없는 자리는 아래 화면을 그대로 쓸 수 있어야 한다. */
   .toastwrap{position:fixed;left:0;right:0;bottom:0;z-index:40;pointer-events:none;
              display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px;
              padding:0 16px calc(12px + env(safe-area-inset-bottom))}
-  .toast{width:100%;max-width:398px;background:var(--surf2);border:1px solid var(--line2);border-radius:16px;
-         padding:13px 15px;box-shadow:0 18px 44px rgba(0,0,0,.6);animation:rise .22s ease-out}
+  /* 토스트 자체는 클릭을 받아야 한다. pointer-events 를 물려받으면 안쪽 '바로 매수' 버튼이
+     클릭을 못 받고 뒤쪽 호가 행으로 빠진다(실측: elementFromPoint 가 SPAN.qcell 을 돌려줬다). */
+  .toast{position:relative;width:100%;max-width:398px;background:var(--surf2);border:1px solid var(--line2);
+         border-radius:16px;padding:13px 15px;box-shadow:0 18px 44px rgba(0,0,0,.6);
+         animation:rise .22s ease-out;pointer-events:auto;cursor:pointer}
   @keyframes rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
-  @media (prefers-reduced-motion:reduce){.toast{animation:none}}
+  .toast.out{animation:sink .16s ease-in forwards}
+  @keyframes sink{to{transform:translateY(8px);opacity:0}}
+  @media (prefers-reduced-motion:reduce){.toast,.toast.out{animation:none}}
+  /* 닫기 단추. 모서리에 걸쳐 두면 토스트 안쪽 레이아웃을 밀지 않는다.
+     토스트 어디를 눌러도 닫히므로 실제 탭 영역은 토스트 전체다. */
+  .tclose{position:absolute;top:-9px;right:-9px;width:32px;height:32px;border-radius:50%;
+          background:var(--surf3);border:1px solid var(--line2);color:var(--dim);
+          display:flex;align-items:center;justify-content:center;
+          box-shadow:0 4px 14px rgba(0,0,0,.55);z-index:2}
+  .tclose:active{background:var(--line2);color:var(--text)}
+  .tallwrap{width:100%;max-width:398px;display:flex;justify-content:center}
+  .tallclose{pointer-events:auto;height:34px;padding:0 14px;border-radius:17px;background:var(--surf3);
+             border:1px solid var(--line2);color:var(--dim);font-size:12px;font-weight:600;
+             box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  .tallclose:active{background:var(--line2);color:var(--text)}
   .modalbg{position:fixed;inset:0;background:rgba(4,6,9,.8);z-index:50;display:flex;align-items:center;
            justify-content:center;padding:16px}
   .modal{width:100%;max-width:398px;background:var(--surf);border:1px solid var(--line2);border-radius:20px;padding:20px;
@@ -281,7 +299,7 @@ async function boot(){
     U.seed   = S.defaults.seedMoney!==undefined? S.defaults.seedMoney : U.seed;
     U.bots   = S.defaults.botCount!==undefined? S.defaults.botCount : U.bots;
   }catch(e){
-    S.booted=true; render();
+    S.booted=true; renderNow();
     toastErr({code:e.code||'NO_META',message:'서버에 연결하지 못했습니다. 새로고침해 주세요'});
     return;
   }
@@ -304,7 +322,7 @@ async function boot(){
     }else forget();
   }
   S.booted=true;
-  render();
+  renderNow();
 }
 </script>
 
@@ -340,13 +358,46 @@ const iBolt='M13 3L5 14h6l-1 7 8-11h-6l1-7z';
 const iCard='M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4';
 
 /* ---- 토스트 ---- */
+/* 토스트를 매번 통째로 다시 그리면, 떠 있던 뉴스 토스트의 '바로 매수' 버튼이 DOM 에서
+   떨어져 누르던 탭이 씹힌다. 그래서 새로 뜬 것만 붙이고 사라질 것만 뗀다. */
 let toasts=[];
 function showToast(html,ms=4200){
   const id='t'+Math.random().toString(36).slice(2);
-  toasts.push({id,html}); if(toasts.length>3) toasts.shift();
-  renderToasts(); setTimeout(()=>{toasts=toasts.filter(t=>t.id!==id);renderToasts();},ms);
+  toasts.push({id,timer:setTimeout(()=>closeToast(id),ms)});
+  const el=document.createElement('div');
+  el.className='toast'; el.dataset.toast=id;
+  el.innerHTML=`<button class="tclose" data-act="closeToast" data-v="${id}" aria-label="알림 닫기">
+    ${svg('M6 6l12 12M18 6L6 18',15,'currentColor',1.9)}</button>${html}`;
+  toastEl.appendChild(el);
+  while(toasts.length>3) closeToast(toasts[0].id);   // 3개까지만 쌓는다
+  syncAllClose();
 }
-function renderToasts(){ toastEl.innerHTML = toasts.map(t=>`<div class="toast">${t.html}</div>`).join(''); }
+function closeToast(id){
+  const t=toasts.find(x=>x.id===id);
+  if(t){ clearTimeout(t.timer); toasts=toasts.filter(x=>x.id!==id); }
+  const el=toastEl.querySelector(`[data-toast="${id}"]`);
+  if(el){ el.classList.add('out'); setTimeout(()=>el.remove(),170); }
+  syncAllClose();
+}
+function closeAllToasts(){ for(const t of toasts.slice()) closeToast(t.id); }
+/* 여러 개가 겹치면 하나씩 닫기 번거롭다 — 2개 이상일 때만 '모두 닫기' 를 얹는다. */
+function syncAllClose(){
+  let w=toastEl.querySelector('.tallwrap');
+  if(toasts.length<2){ if(w) w.remove(); return; }
+  if(!w){
+    w=document.createElement('div'); w.className='tallwrap';
+    w.innerHTML=`<button class="tallclose" data-act="closeToasts" aria-label="알림 모두 닫기"></button>`;
+    toastEl.insertBefore(w,toastEl.firstChild);
+  }
+  if(w!==toastEl.firstChild) toastEl.insertBefore(w,toastEl.firstChild);
+  w.querySelector('.tallclose').textContent=`알림 ${toasts.length}개 모두 닫기`;
+}
+/* 토스트 어디를 눌러도 닫힌다. 안쪽 버튼(바로 매수·헤드라인)은 그대로 동작한다. */
+toastEl.addEventListener('click',e=>{
+  const box=e.target.closest('.toast'); if(!box) return;
+  if(e.target.closest('button,a,[data-act]')) return;
+  closeToast(box.dataset.toast);
+});
 
 /* 체결 알림. me.newFills 는 직전 전송 이후의 신규분만 오므로 그대로 띄우면 중복이 없다.
    수수료는 서버가 체결금액에 feeRate 를 곱해 내림한 값이라(_settleTrades) 같은 식으로 계산한다. */
@@ -1046,26 +1097,93 @@ function vPortfolio(snap,me){
 
 <script>
 /* ---- 라우터 ---- */
-function go(v){ U.view=v; if(v==='stock') U.tab='호가'; view.scrollTop=0; render(); }
+function go(v){ U.view=v; if(v==='stock') U.tab='호가'; view.scrollTop=0; renderNow(); }
 
-function render(){
+/* ---- 그리기 -------------------------------------------------------------
+   화면은 SSE 푸시마다(기본 400ms) 다시 그려진다. 예전에는 view.innerHTML 을 통째로
+   갈아끼웠는데, 그러면 두 가지가 깨진다. 실측한 값이다.
+
+     · 누르고 있던 버튼이 DOM 에서 떨어져 탭이 씹힌다 — 0.6초 누르고 떼기 6회 중 6회 실패.
+     · 스크롤을 되살리려고 저장해 둔 scrollTop 을 되쓰는데, 그 사이 사용자가 더 스크롤하면
+       위치가 뒤로 끌린다 — 표본 230개 중 230개에서 어긋났다.
+
+   그래서 새 HTML 을 화면 밖에서 만들어 두고, 기존 DOM 과 견주어 달라진 자리만 고친다.
+   버튼과 스크롤 컨테이너가 그대로 살아 있으므로 탭도 스크롤도 방해받지 않는다.
+   (CPU 4배 스로틀에서 통째 교체는 1회 33ms 였다.) */
+
+const scratch = document.createElement('div');
+
+function patchAttrs(live,next){
+  for(const a of Array.from(next.attributes))
+    if(live.getAttribute(a.name)!==a.value) live.setAttribute(a.name,a.value);
+  for(const a of Array.from(live.attributes))
+    if(!next.hasAttribute(a.name)) live.removeAttribute(a.name);
+}
+function patchEl(live,next){
+  if(live.nodeName!==next.nodeName){ live.replaceWith(next); return; }
+  patchAttrs(live,next);
+  // 캔버스는 자바스크립트로 직접 그린다. 자식을 건드리면 그림이 날아간다.
+  if(live.nodeName==='CANVAS') return;
+  // 입력 중인 칸은 값도 캐럿도 건드리지 않는다.
+  if(live===document.activeElement&&(live.nodeName==='INPUT'||live.nodeName==='TEXTAREA')) return;
+  patchKids(live,next);
+}
+function patchKids(live,next){
+  const kids=Array.from(next.childNodes);        // appendChild 로 옮겨도 순회가 깨지지 않게 미리 뜬다
+  for(let i=0;i<kids.length;i++){
+    const n=kids[i], l=live.childNodes[i];
+    if(!l){ live.appendChild(n); continue; }
+    if(l.nodeType!==n.nodeType||l.nodeName!==n.nodeName){ l.replaceWith(n); continue; }
+    if(n.nodeType===1){ patchEl(l,n); continue; }
+    if(l.nodeValue!==n.nodeValue) l.nodeValue=n.nodeValue;   // 텍스트·주석
+  }
+  while(live.childNodes.length>kids.length) live.removeChild(live.lastChild);
+}
+
+function viewHtml(){
   const snap=S.snap, me=S.me||EMPTY_ME;
-  const st=view.scrollTop;
-  let html;
-  if(U.view==='home')       html=vHome();
-  else if(U.view==='join')  html=vJoin();
-  else if(U.view==='setup') html=vSetup();
-  else if(U.view==='lobby') html=vLobby();
-  else if(!snap)            html=vHome();
-  else if(U.view==='ipo')   html=vIpo(snap,me);
-  else if(U.view==='stock') html=vStock(snap,me);
-  else if(U.view==='assets')html=vPortfolio(snap,me);
-  else if(U.view==='result')html=vResult(snap);
-  else                      html=vMarket(snap,me);
-  view.innerHTML=html;
-  view.scrollTop=st;
-  renderPaused(snap);
-  if(U.view==='stock'&&U.tab==='차트') drawChart();
+  if(U.view==='home')       return vHome();
+  if(U.view==='join')       return vJoin();
+  if(U.view==='setup')      return vSetup();
+  if(U.view==='lobby')      return vLobby();
+  if(!snap)                 return vHome();
+  if(U.view==='ipo')        return vIpo(snap,me);
+  if(U.view==='stock')      return vStock(snap,me);
+  if(U.view==='assets')     return vPortfolio(snap,me);
+  if(U.view==='result')     return vResult(snap);
+  return vMarket(snap,me);
+}
+
+let lastHtml=null, lastView=null, rafPending=0, chartKey=null;
+
+function paint(){
+  rafPending=0;
+  const html=viewHtml();
+  if(U.view!==lastView){        // 화면이 통째로 바뀔 때는 남길 게 없다 — 그대로 새로 깐다
+    lastView=U.view; lastHtml=html;
+    view.innerHTML=html;
+    view.scrollTop=0;
+  }else if(html!==lastHtml){    // 값이 하나도 안 바뀌면 DOM 을 만지지 않는다
+    lastHtml=html;
+    scratch.innerHTML=html;
+    patchKids(view,scratch);
+  }
+  renderPaused(S.snap);
+  if(U.view==='stock'&&U.tab==='차트'){
+    // 캔버스는 살아남으므로 그림이 실제로 달라질 때만 다시 그린다.
+    const s=stockOf(U.code);
+    const key=`${U.code}|${S.chart.rows.length}|${s?s.last:0}|${view.clientWidth}`;
+    if(key!==chartKey){ chartKey=key; drawChart(); }
+  }else chartKey=null;
+}
+
+/* 한 프레임에 푸시가 여러 번 와도 그리는 건 한 번이면 된다. */
+function render(){ if(!rafPending) rafPending=requestAnimationFrame(paint); }
+
+/* 화면을 옮길 때는 기다리지 않고 바로 그린다 — 탭을 눌렀는데 한 프레임 비는 게 보인다. */
+function renderNow(){
+  if(rafPending){ cancelAnimationFrame(rafPending); rafPending=0; }
+  paint();
 }
 
 // 차트 이력은 스냅샷에 실려 오지 않는다(크기). 보고 있는 동안만 따로 받아 온다.
@@ -1079,10 +1197,10 @@ document.addEventListener('input', e=>{
 
 async function busy(fn){
   if(U.busy) return;
-  U.busy=true; render();
+  U.busy=true; renderNow();
   try{ await fn(); }
   catch(e){ toastErr(e); }
-  finally{ U.busy=false; render(); }
+  finally{ U.busy=false; renderNow(); }
 }
 
 async function submitOrder(code,side,price,qty,market){
@@ -1093,6 +1211,12 @@ document.addEventListener('click', async e=>{
   const b=e.target.closest('[data-act]'); if(!b||b.disabled) return;
   const a=b.dataset.act, v=b.dataset.v, k=b.dataset.k;
   const me=S.me||EMPTY_ME;
+
+  if(a==='closeToast')  return closeToast(v);
+  if(a==='closeToasts') return closeAllToasts();
+  // 토스트 안에서 뭔가를 실행했으면 그 팝업은 할 일을 다 했으므로 닫는다.
+  const fromToast=b.closest('.toast');
+  if(fromToast) closeToast(fromToast.dataset.toast);
 
   if(a==='set'){ const num=!isNaN(Number(v))&&k!=='tab'&&k!=='sort';
     U[k]= k==='market'? v==='1' : (num? Number(v) : v);
@@ -1116,7 +1240,7 @@ document.addEventListener('click', async e=>{
   else if(a==='start'){ return busy(async()=>{ await api('POST', R('/start')); }); }
   else if(a==='end'){   return busy(async()=>{ await api('POST', R('/end')); }); }
   else if(a==='pause'){ return busy(async()=>{ await api('POST', R(v==='1'?'/pause':'/resume-game')); }); }
-  else if(a==='leave'){ forget(); U.view='home'; return render(); }
+  else if(a==='leave'){ forget(); U.view='home'; return renderNow(); }
   else if(a==='again'){
     const prev=Object.assign({}, (S.lobby&&S.lobby.config)||{});
     delete prev.seed;                      // 같은 시드를 물려주면 똑같은 판이 그대로 재현된다
@@ -1169,7 +1293,7 @@ document.addEventListener('click', async e=>{
       if(!r.filled&&!r.resting) toastErr({code:'NOT_FILLED',message:'체결도 등록도 되지 않았습니다'});
     });
   }
-  render();
+  renderNow();
 });
 
 boot();
