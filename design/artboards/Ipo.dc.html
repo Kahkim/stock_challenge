@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #0A0C10; color: #EDEFF3; font-family: 'IBM Plex Sans KR', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #C6F24E; text-decoration: none; }
+    a:hover { color: #DCFF8A; }
+    .m { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  </style>
+</helmet>
+<div style="width:390px;min-height:1390px;box-sizing:border-box;background:#0A0C10;display:flex;flex-direction:column;">
+
+  <div style="padding:16px 16px 0;border-bottom:1px solid #242A34;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div style="flex-grow:1;font-size:15px;font-weight:600;color:#EDEFF3;">동문회 챌린지</div>
+      <div style="height:24px;padding:0 9px;border-radius:6px;background:rgba(245,165,36,0.13);color:#F5A524;font-size:10px;font-weight:700;letter-spacing:0.06em;display:flex;align-items:center;">개장 공모</div>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px;">
+      <div style="font-size:40px;font-weight:700;color:#F5A524;letter-spacing:-0.02em;" class="m">28</div>
+      <div style="font-size:14px;color:#8B93A1;">초 뒤 마감</div>
+      <div style="flex-grow:1;"></div>
+      <div style="font-size:12px;color:#5C6472;">단일가 배정</div>
+    </div>
+    <div style="height:3px;border-radius:2px;background:#20252E;margin:12px 0 16px;display:flex;">
+      <div style="width:38%;background:#F5A524;border-radius:2px;"></div>
+    </div>
+  </div>
+
+  <div style="padding:16px 16px 0;">
+    <div style="display:flex;gap:10px;background:rgba(245,165,36,0.13);border:1px solid rgba(245,165,36,0.35);border-radius:14px;padding:14px 16px;">
+      <div style="flex-shrink:0;margin-top:1px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A524" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"></path></svg></div>
+      <div>
+        <div style="font-size:14px;font-weight:700;color:#F5A524;">청약하지 않으면 주식 0주로 시작합니다</div>
+        <div style="font-size:12px;color:#8B93A1;line-height:1.6;margin-top:5px;">전원 현금만 들고 시작합니다. 주식이 없으면 매분 들어오는 <b style="color:#EDEFF3;">무상증자를 한 주도 받지 못하고</b>, 인플레로 오르는 값도 못 탑니다. 아무것도 안 하면 수익률이 정확히 0%가 되어 최하위로 갑니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:8px;padding:22px 16px 10px;">
+    <div style="font-size:14px;font-weight:700;color:#EDEFF3;flex-grow:1;">종목별 청약 현황</div>
+    <div style="font-size:11px;color:#5C6472;" class="m">400ms 갱신</div>
+  </div>
+
+  <div style="border-top:1px solid #242A34;">
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:rgba(198,242,78,0.10);">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#8295b6;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">서울대</div>
+          <div style="height:18px;padding:0 5px;border-radius:4px;background:#C6F24E;color:#0A0C10;font-size:9px;font-weight:700;display:flex;align-items:center;" class="m">내 120주</div>
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 1,200 · 발행 1,800주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">2,760주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.5배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#788ca6;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">연세대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 2,500 · 발행 860주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">1,340주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.6배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#bf818a;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">고려대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 3,400 · 발행 640주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">980주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.5배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#7b9dba;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">한양대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 1,800 · 발행 1,200주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">1,980주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.6배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#e7bd79;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">동국대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 900 · 발행 2,400주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">3,640주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.5배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#73b09b;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">건국대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 2,200 · 발행 980주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">1,420주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.4배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#81818c;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">홍익대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 5,000 · 발행 430주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">620주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.4배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#c08a95;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">경희대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 1,500 · 발행 1,440주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">2,240주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.6배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#8aa7c0;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">경기대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 3,000 · 발행 720주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">1,080주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.5배</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;height:64px;padding:0 16px;border-bottom:1px solid #242A34;background:transparent;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#84b095;flex-shrink:0;"></div>
+      <div style="flex-grow:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="font-size:15px;font-weight:600;color:#EDEFF3;">숭실대</div>
+          
+        </div>
+        <div style="font-size:11px;color:#5C6472;margin-top:2px;" class="m">초기가 4,200 · 발행 510주</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:600;color:#EDEFF3;" class="m">760주</div>
+        <div style="font-size:11px;font-weight:600;color:#FF4D5E;margin-top:2px;" class="m">청약률 1.5배</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex-grow:1;"></div>
+
+  <div style="border-top:1px solid #242A34;background:#12151B;padding:14px 16px 18px;margin-top:16px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <div style="width:9px;height:9px;border-radius:4.5px;background:#8295b6;flex-shrink:0;"></div>
+      <div style="font-size:15px;font-weight:700;color:#EDEFF3;flex-grow:1;">서울대 청약</div>
+      <div style="font-size:11px;color:#5C6472;" class="m">호가 5원 · 10주 단위</div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:#0A0C10;border:1px solid #2E3540;border-radius:11px;">
+      <div style="font-size:11px;color:#5C6472;width:44px;">가격</div>
+      <div style="flex-grow:1;text-align:right;font-size:17px;font-weight:700;" class="m">1,300</div>
+      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B93A1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></svg></div>
+      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:#0A0C10;border:1px solid #2E3540;border-radius:11px;margin-top:8px;">
+      <div style="font-size:11px;color:#5C6472;width:44px;">수량</div>
+      <div style="flex-grow:1;text-align:right;font-size:17px;font-weight:700;" class="m">120</div>
+      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B93A1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></svg></div>
+      <div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;margin:14px 2px 8px;">
+      <div style="font-size:12px;color:#5C6472;flex-grow:1;">예치 증거금</div>
+      <div style="font-size:14px;font-weight:700;" class="m">156,000원</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin:0 2px 14px;">
+      <div style="font-size:12px;color:#5C6472;flex-grow:1;">남는 현금</div>
+      <div style="font-size:12px;color:#8B93A1;" class="m">844,000원</div>
+    </div>
+
+    <div style="height:54px;display:flex;align-items:center;justify-content:center;border-radius:13px;background:#C6F24E;color:#0A0C10;font-size:16px;font-weight:700;">청약하기</div>
+    <div style="display:flex;align-items:flex-start;gap:6px;margin-top:9px;">
+        <div style="flex-shrink:0;margin-top:-1px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2"></path></svg></div>
+        <div style="font-size:11px;color:#5C6472;line-height:1.5;">마감되면 단일가로 배정되고, 낙찰 차액과 미배정분은 자동 환불됩니다. 한 종목에 여러 번 낼 수 있습니다.</div>
+      </div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":1390}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
