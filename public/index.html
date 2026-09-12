@@ -437,11 +437,23 @@ function connBanner(){
     padding:10px 12px;border-radius:11px;background:var(--warnT);border:1px solid rgba(245,165,36,.3)">
     ${svg(iInfo,15,'var(--warn)',1.6)}<span style="font-size:12px;font-weight:600">연결이 끊겼습니다 — 다시 붙는 중입니다</span></div></div>`;
 }
-function pausedBanner(snap){
-  if(!snap.paused) return '';
-  return `<div class="pad" style="padding-top:10px"><div style="display:flex;align-items:center;gap:8px;
-    padding:10px 12px;border-radius:11px;background:var(--surf3);border:1px solid var(--line2)">
-    ${svg('M9 5v14M15 5v14',15,'var(--dim)',1.8)}<span style="font-size:12px;font-weight:600">방장이 게임을 멈췄습니다</span></div></div>`;
+function pausedBanner(){ return ''; }   // 일시정지는 아래 모달로 알린다
+/* 모달이 화면 전체를 덮으므로 방장의 '재개' 도 같이 덮인다 — 재개 버튼을 모달 안에 둔다.
+   매 푸시(400ms)마다 다시 그리면 버튼이 DOM 에서 떨어져 클릭이 씹히므로, 상태가 바뀔 때만 갈아끼운다. */
+let pausedShown = null;
+function renderPaused(snap){
+  const on = !!(snap && snap.paused);
+  const key = on ? (isHost()?'host':'guest') : 'off';
+  if(pausedShown===key) return;
+  pausedShown = key;
+  modalEl.innerHTML = on ? `<div class="modalbg">
+    <div class="modal" style="text-align:center;padding:32px 24px">
+      <div style="display:flex;justify-content:center">${svg('M9 6v12M15 6v12',34,'var(--acc)',2)}</div>
+      <div style="font-size:20px;font-weight:700;margin-top:14px">일시정지</div>
+      <div style="font-size:13px;color:var(--dim);line-height:1.6;margin-top:8px">
+        방장이 게임을 멈췄습니다. 남은 시간도 함께 멈춰 있습니다.</div>
+      ${isHost()?`<button class="cta" data-act="pause" data-v="0" style="margin-top:20px">재개하기</button>`:''}
+    </div></div>` : '';
 }
 
 /* ---- 0. 시작 ---- */
@@ -647,7 +659,11 @@ function vMarket(snap,me){
     <div class="bar" style="margin:12px 0 10px"><i style="width:${Math.min(100,snap.elapsedSec/(CFG.durationMin*60+CFG.ipoSec)*100)}%"></i></div>
     <div style="display:flex;align-items:center;padding-bottom:12px">
       <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${(CFG.inflationPerMin*100).toFixed(1)}%/분</span>
-      ${isHost()?`<button data-act="end" style="height:32px;padding:0 12px;border-radius:8px;
+      ${isHost()?`<button data-act="pause" data-v="${snap.paused?0:1}" style="height:32px;padding:0 12px;
+        border-radius:8px;margin-right:6px;background:${snap.paused?'var(--accT)':'transparent'};
+        border:1px solid ${snap.paused?'var(--acc)':'var(--line)'};
+        color:${snap.paused?'var(--acc)':'var(--dim2)'};font-size:12px">${snap.paused?'재개':'일시정지'}</button>
+      <button data-act="end" style="height:32px;padding:0 12px;border-radius:8px;
         border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button>`:''}</div></div>
   ${connBanner()}${pausedBanner(snap)}
   ${newsBanner(snap)}
@@ -936,6 +952,11 @@ function vResult(snap){
       <div class="row" style="height:52px"><span class="m" style="width:52px;font-size:11px;color:var(--dim2)">+${clk(nw.atSec)}</span>
         <span class="grow" style="font-size:12px;line-height:1.4">${esc(nw.headline)}</span>
         <span class="m" style="font-size:11px;font-weight:600;color:${cl(nw.impactPct)}">${p1(nw.impactPct)}</span></div>`).join('')}</div>`:''}
+  <div class="pad" style="padding-top:22px;display:flex;gap:10px">
+    <a class="ghost" style="flex:1;text-decoration:none" download
+       href="${R('/result.csv?type=ranking')}">순위 CSV</a>
+    <a class="ghost" style="flex:1;text-decoration:none" download
+       href="${R('/result.csv?type=stocks')}">종목 CSV</a></div>
   <div class="sticky" style="display:flex;gap:10px">
     <button class="ghost" style="width:120px;height:54px" data-act="leave">나가기</button>
     ${isHost()?`<button class="cta" style="flex:1;width:auto" data-act="again" ${U.busy?'disabled':''}>${U.busy?'만드는 중…':'같은 설정으로 다시'}</button>`:''}</div>`;
@@ -1043,6 +1064,7 @@ function render(){
   else                      html=vMarket(snap,me);
   view.innerHTML=html;
   view.scrollTop=st;
+  renderPaused(snap);
   if(U.view==='stock'&&U.tab==='차트') drawChart();
 }
 
@@ -1093,6 +1115,7 @@ document.addEventListener('click', async e=>{
   }
   else if(a==='start'){ return busy(async()=>{ await api('POST', R('/start')); }); }
   else if(a==='end'){   return busy(async()=>{ await api('POST', R('/end')); }); }
+  else if(a==='pause'){ return busy(async()=>{ await api('POST', R(v==='1'?'/pause':'/resume-game')); }); }
   else if(a==='leave'){ forget(); U.view='home'; return render(); }
   else if(a==='again'){
     const prev=Object.assign({}, (S.lobby&&S.lobby.config)||{});
