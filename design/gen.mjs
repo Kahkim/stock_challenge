@@ -315,6 +315,13 @@ const timerChip = () => `<div style="display:flex;align-items:center;gap:5px;">
    1) 방 만들기 — Room.dc.html
    ======================================================================= */
 const ROOM_H = 1420;
+// 세그먼트 선택 위치는 CFG 에서 파생시킨다 — 손으로 박으면 설정만 바꿨을 때 조용히 어긋난다
+const DUR_OPTS = [5, 10, 15];
+const IPO_OPTS = [0, 30, 45];
+const SEED_OPTS = [500_000, 1_000_000, 5_000_000];
+if (DUR_OPTS.indexOf(CFG.durationMin) < 0) problems.push(`정규장 세그먼트에 ${CFG.durationMin}분 없음`);
+if (IPO_OPTS.indexOf(CFG.ipoSec) < 0) problems.push(`공모 세그먼트에 ${CFG.ipoSec}초 없음`);
+if (SEED_OPTS.indexOf(CFG.seedMoney) < 0) problems.push(`시드 세그먼트에 ${CFG.seedMoney} 없음`);
 
 const stockChip = (s, on) => `<div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid ${on ? T.accent : T.line};background:${on ? accTint : 'transparent'};">
         ${dot(s.color, 8)}
@@ -352,11 +359,11 @@ const roomBody = `<div style="width:390px;min-height:${ROOM_H}px;box-sizing:bord
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div>
           <div style="font-size:11px;color:${T.dim2};margin-bottom:6px;">정규장 길이</div>
-          ${segmented(['5분', '10분', '15분'], 2)}
+          ${segmented(DUR_OPTS.map((m) => m + '분'), DUR_OPTS.indexOf(CFG.durationMin))}
         </div>
         <div>
           <div style="font-size:11px;color:${T.dim2};margin-bottom:6px;">개장 공모</div>
-          ${segmented(['없음', '30초', '45초'], 2)}
+          ${segmented(IPO_OPTS.map((v) => (v ? v + '초' : '없음')), IPO_OPTS.indexOf(CFG.ipoSec))}
         </div>
       </div>
       ${hint('공모를 켜면 전원이 주식 0주로 시작해 청약으로 시초가를 만듭니다. 끄면 바로 정규장입니다.')}
@@ -367,7 +374,7 @@ const roomBody = `<div style="width:390px;min-height:${ROOM_H}px;box-sizing:bord
       <div style="display:flex;flex-direction:column;gap:10px;">
         <div>
           <div style="font-size:11px;color:${T.dim2};margin-bottom:6px;">1인당 시작 현금</div>
-          ${segmented(['50만', '100만', '500만'], 1)}
+          ${segmented(SEED_OPTS.map((v) => v / 10000 + '만'), SEED_OPTS.indexOf(CFG.seedMoney))}
         </div>
         <div style="display:flex;flex-direction:column;background:${T.surf};border:1px solid ${T.line};border-radius:12px;padding:2px 14px;">
           ${stepperRow('월급', n(CFG.salaryAmount), `매 ${CFG.salaryIntervalSec}초 · 전원 동일`)}
@@ -617,7 +624,7 @@ const sortedStocks = [...STOCKS].sort((a, b) => b.changePct - a.changePct);
 const assetCard = `<div style="background:${T.surf};border:1px solid ${T.line};border-radius:14px;padding:14px 16px 0;">
       <div style="display:flex;align-items:center;gap:8px;">
         <div style="flex-grow:1;font-size:12px;font-weight:600;color:${T.dim2};letter-spacing:0.04em;">내 총자산</div>
-        <div style="height:22px;padding:0 8px;border-radius:6px;background:${accTint};color:${T.accent};font-size:11px;font-weight:700;display:flex;align-items:center;" class="m">3위 / ${HUMANS}명</div>
+        <div style="height:22px;padding:0 8px;border-radius:6px;background:${accTint};color:${T.accent};font-size:11px;font-weight:700;display:flex;align-items:center;" class="m">${RANKING.find((p) => p.me).rank}위 / ${HUMANS}명</div>
       </div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
         <div style="font-size:28px;font-weight:700;color:${T.text};letter-spacing:-0.02em;" class="m">${n(ME.nav)}</div>
@@ -735,6 +742,7 @@ for (const x of [...DEPTH.asks, ...DEPTH.bids]) {
 }
 if (DEPTH.bids[0].p !== FOCUS.last) problems.push('최우선 매수호가와 현재가가 다름');
 
+const QTY_W = 127;          // 좌우 잔량 셀 폭 — 같아야 막대 길이를 비교할 수 있다
 const LADDER_STEP = tickSize(FOCUS.last);
 const askLadder = Array.from({ length: 10 }, (_, i) => FOCUS.last + (10 - i) * LADDER_STEP);
 const bidLadder = Array.from({ length: 10 }, (_, i) => FOCUS.last - i * LADDER_STEP);
@@ -749,7 +757,7 @@ const askRow = (p) => {
   const e = findQ(DEPTH.asks, p);
   const w = e ? e.q / maxQ * 100 : 0;
   return `<div style="display:flex;align-items:center;height:44px;border-bottom:1px solid ${T.line};">
-        <div style="width:143px;height:44px;position:relative;display:flex;align-items:center;justify-content:flex-end;padding-right:12px;box-sizing:border-box;">
+        <div style="width:${QTY_W}px;height:44px;position:relative;display:flex;align-items:center;justify-content:flex-end;padding-right:12px;box-sizing:border-box;">
           ${e ? `<div style="position:absolute;right:0;top:6px;height:32px;width:${w.toFixed(1)}%;background:${downTint};border-radius:3px 0 0 3px;"></div>
           <div style="position:relative;font-size:13px;color:${T.dim};" class="m">${n(e.q)}</div>` : ''}
         </div>
@@ -762,9 +770,9 @@ const bidRow = (p, i) => {
   const e = findQ(DEPTH.bids, p);
   const w = e ? e.q / maxQ * 100 : 0;
   return `<div style="display:flex;align-items:center;height:44px;border-bottom:1px solid ${T.line};">
-        <div style="width:143px;"></div>
+        <div style="width:${QTY_W}px;"></div>
         ${priceCell(p, 'bid', i === 0)}
-        <div style="flex-grow:1;height:44px;position:relative;display:flex;align-items:center;gap:7px;padding-left:12px;box-sizing:border-box;">
+        <div style="width:${QTY_W}px;height:44px;position:relative;display:flex;align-items:center;gap:7px;padding-left:12px;box-sizing:border-box;">
           ${e ? `<div style="position:absolute;left:0;top:6px;height:32px;width:${w.toFixed(1)}%;background:${upTint};border-radius:0 3px 3px 0;"></div>
           <div style="position:relative;font-size:13px;color:${T.dim};" class="m">${n(e.q)}</div>
           ${e.mine ? `<div style="position:relative;display:flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:${T.accent};color:${T.ink};font-size:10px;font-weight:700;" class="m">내 ${e.mine}</div>` : ''}` : ''}
@@ -865,9 +873,9 @@ const stockBody = `<div style="width:390px;min-height:${STOCK_H}px;box-sizing:bo
   ${stockHeader('호가')}
 
   <div style="display:flex;align-items:center;height:34px;padding:8px 16px 0;">
-    <div style="width:131px;text-align:right;font-size:10px;color:${T.dim2};font-weight:600;">매도 잔량</div>
+    <div style="width:${QTY_W - 12}px;text-align:right;font-size:10px;color:${T.dim2};font-weight:600;">매도 잔량</div>
     <div style="width:104px;text-align:center;font-size:10px;color:${T.dim2};font-weight:600;">호가 10단계</div>
-    <div style="flex-grow:1;padding-left:12px;font-size:10px;color:${T.dim2};font-weight:600;">매수 잔량</div>
+    <div style="width:${QTY_W}px;padding-left:12px;box-sizing:border-box;font-size:10px;color:${T.dim2};font-weight:600;">매수 잔량</div>
   </div>
 
   <div style="padding:0 16px;border-top:1px solid ${T.line};">
@@ -878,9 +886,9 @@ const stockBody = `<div style="width:390px;min-height:${STOCK_H}px;box-sizing:bo
       </div>
       ${bidLadder.map(bidRow).join('\n      ')}
       <div style="display:flex;align-items:center;height:40px;">
-        <div style="width:143px;text-align:right;padding-right:12px;box-sizing:border-box;font-size:12px;font-weight:600;color:${T.down};" class="m">${n(askTotal)}</div>
+        <div style="width:${QTY_W}px;text-align:right;padding-right:12px;box-sizing:border-box;font-size:12px;font-weight:600;color:${T.down};" class="m">${n(askTotal)}</div>
         <div style="width:104px;text-align:center;font-size:10px;color:${T.dim2};">총잔량</div>
-        <div style="flex-grow:1;padding-left:12px;font-size:12px;font-weight:600;color:${T.up};" class="m">${n(bidTotal)}</div>
+        <div style="width:${QTY_W}px;padding-left:12px;box-sizing:border-box;font-size:12px;font-weight:600;color:${T.up};" class="m">${n(bidTotal)}</div>
       </div>
   </div>
 
@@ -1170,6 +1178,11 @@ const canvas = {
   launch: { view: 'canvas' },
 };
 fs.writeFileSync(`${OUT}/canvas.json`, JSON.stringify(canvas, null, 2));
+
+/* ---------- 화면 간 인원수 일치 ---------- */
+if (LOBBY_PLAYERS.length !== HUMANS) problems.push(`대기실 참가자 ${LOBBY_PLAYERS.length}명 ≠ HUMANS ${HUMANS}`);
+if (RANKING.length !== HUMANS) problems.push(`순위 ${RANKING.length}명 ≠ HUMANS ${HUMANS}`);
+if (STOCK_COUNT !== Object.keys(IPO_DEMAND).length) problems.push('공모 수요 종목 수가 STOCKS 와 다름');
 
 /* ---------- 결과 보고 ---------- */
 if (problems.length) {
