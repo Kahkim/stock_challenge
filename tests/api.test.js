@@ -372,6 +372,118 @@ async function main() {
     assert.ok(result.data.humanRanking.length === 1);
   });
 
+
+  await test('새로고침해도 같은 기기면 원래 참가자로 복귀한다', async () => {
+    const mk = await J('POST', '/api/rooms', {
+      config: { stockCodes: ['SNU', 'YON'], botCount: 6, ipoSec: 1, durationMin: 5, tickMs: 100, seed: 808 },
+    });
+    const c = mk.data.roomCode;
+    const first = await J('POST', `/api/rooms/${c}/join`, { name: '김철수', deviceId: 'dev-A' });
+    assert.strictEqual(first.data.resumed, false);
+    // 새로고침: 같은 deviceId 로 다시 들어온다. 이름을 엉뚱하게 보내도 원래 참가자다.
+    const again = await J('POST', `/api/rooms/${c}/join`, { name: '엉뚱한이름', deviceId: 'dev-A' });
+    assert.strictEqual(again.data.resumed, true);
+    assert.strictEqual(again.data.name, '김철수');
+    assert.strictEqual(again.data.playerToken, first.data.playerToken);
+    assert.strictEqual(again.data.playerId, first.data.playerId);
+    // 다른 기기는 새 참가자
+    const other = await J('POST', `/api/rooms/${c}/join`, { name: '이영희', deviceId: 'dev-B' });
+    assert.strictEqual(other.data.resumed, false);
+    assert.strictEqual(store.get(c).game.humans().length, 2);
+    // 시작한 뒤에도 복귀는 되고, 난입은 막힌다
+    await J('POST', `/api/rooms/${c}/start`, {}, { 'X-Host-Token': mk.data.hostToken });
+    const back = await J('POST', `/api/rooms/${c}/join`, { name: '김철수', deviceId: 'dev-A' });
+    assert.strictEqual(back.status, 200, '시작 뒤 복귀가 막혔다');
+    assert.strictEqual(back.data.resumed, true);
+    const intruder = await J('POST', `/api/rooms/${c}/join`, { name: '난입', deviceId: 'dev-Z' });
+    assert.strictEqual(intruder.status, 409);
+    assert.strictEqual(intruder.data.error.code, 'ALREADY_STARTED');
+  });
+
+  await test('보관한 토큰의 유효성을 확인할 수 있다', async () => {
+    const ok = await J('POST', `/api/rooms/${roomCode}/resume`, { playerToken: alice.playerToken });
+    assert.strictEqual(ok.status, 200);
+    assert.strictEqual(ok.data.name, '앨리스');
+    const bad = await J('POST', `/api/rooms/${roomCode}/resume`, { playerToken: 'garbage' });
+    assert.strictEqual(bad.status, 401);
+    assert.strictEqual(bad.data.error.code, 'INVALID_TOKEN');
+  });
+
+  await test('주문을 폭주시키면 요청 제한에 걸린다', async () => {
+    const { LIMITS } = require('../server');
+    LIMITS.order.reset();
+    const body = { code: 'SNU', side: 'buy', price: 10, qty: 10 };   // 체결 안 되는 저가 주문
+    let limitedCount = 0, first429 = -1;
+    for (let i = 0; i < 60; i++) {
+      const r = await J('POST', `/api/rooms/${roomCode}/orders`, body, { 'X-Player-Token': alice.playerToken });
+      if (r.status === 429) { limitedCount++; if (first429 < 0) first429 = i; }
+    }
+    assert.ok(limitedCount > 0, '60회 연속 주문인데 제한이 안 걸렸다');
+    assert.ok(first429 >= 20, `${first429}번째에 막혔다 — 정상 플레이도 막힐 수 있다`);
+    LIMITS.order.reset();
+  });
+
+  await test('방장이 일시정지하면 게임 시간이 멈춘다', async () => {
+    const mk = await J('POST', '/api/rooms', {
+      config: { stockCodes: ['SNU', 'YON'], botCount: 6, ipoSec: 1, durationMin: 5, tickMs: 100, seed: 909 },
+    });
+    const c = mk.data.roomCode, H = { 'X-Host-Token': mk.data.hostToken };
+    await J('POST', `/api/rooms/${c}/join`, { name: '참가' });
+    await J('POST', `/api/rooms/${c}/start`, {}, H);
+    fastForward(c, 30);
+    const nope = await J('POST', `/api/rooms/${c}/pause`);
+    assert.strictEqual(nope.status, 403, '아무나 멈출 수 있으면 안 된다');
+    const p = await J('POST', `/api/rooms/${c}/pause`, {}, H);
+    assert.strictEqual(p.status, 200);
+    assert.strictEqual(p.data.paused, true);
+    const before = store.get(c).game.elapsedSec;
+    await new Promise(r => setTimeout(r, 300));
+    assert.strictEqual(store.get(c).game.elapsedSec, before, '정지 중인데 시간이 흘렀다');
+    const r = await J('POST', `/api/rooms/${c}/resume-game`, {}, H);
+    assert.strictEqual(r.data.paused, false);
+    const nope2 = await J('POST', `/api/rooms/${c}/resume-game`, {}, H);
+    assert.strictEqual(nope2.data.error.code, 'NOT_PAUSED');
+  });
+
+  await test('강퇴해도 주식 총량이 보존된다', async () => {
+    const mk = await J('POST', '/api/rooms', {
+      config: { stockCodes: ['SNU', 'YON'], botCount: 8, ipoSec: 2, durationMin: 5, tickMs: 100, seed: 606 },
+    });
+    const c = mk.data.roomCode, H = { 'X-Host-Token': mk.data.hostToken };
+    const p1 = await J('POST', `/api/rooms/${c}/join`, { name: '나갈사람', deviceId: 'k1' });
+    await J('POST', `/api/rooms/${c}/join`, { name: '남을사람', deviceId: 'k2' });
+    await J('POST', `/api/rooms/${c}/start`, {}, H);
+    await J('POST', `/api/rooms/${c}/ipo-bids`, { code: 'SNU', price: 1800, qty: 200 },
+            { 'X-Player-Token': p1.data.playerToken });
+    fastForward(c, 40);
+    const g = store.get(c).game;
+    const total = (code) => {
+      let t = 0;
+      for (const p of g.players.values()) t += (p.holdings[code] || 0);
+      for (const o of g.stockByCode.get(code).book.asks) t += o.qty;
+      return t;
+    };
+    const before = g.stocks.map(s => total(s.code));
+    const k = await J('POST', `/api/rooms/${c}/kick`, { playerId: p1.data.playerId }, H);
+    assert.strictEqual(k.status, 200);
+    g.stocks.forEach((s, i) => {
+      assert.strictEqual(total(s.code), before[i],
+        `${s.name} 강퇴 후 주식 총량이 ${before[i]} -> ${total(s.code)} 로 변했다`);
+    });
+    assert.strictEqual(g.humans().length, 1, '강퇴자가 인원에서 안 빠졌다');
+    assert.ok(!g.ranking(false).some(r => r.id === p1.data.playerId), '강퇴자가 순위에 남아 있다');
+    const denied = await J('POST', `/api/rooms/${c}/orders`, { code: 'SNU', side: 'buy', price: 100, qty: 10 },
+                           { 'X-Player-Token': p1.data.playerToken });
+    assert.strictEqual(denied.status, 401);
+  });
+
+  await test('방장이 아니면 내보낼 수 없고 봇은 내보낼 수 없다', async () => {
+    const nope = await J('POST', `/api/rooms/${roomCode}/kick`, { playerId: 'b1' });
+    assert.strictEqual(nope.status, 403);
+    const bot = await J('POST', `/api/rooms/${roomCode}/kick`, { playerId: 'b1' }, { 'X-Host-Token': hostToken });
+    assert.strictEqual(bot.data.error.code, 'CANNOT_KICK_BOT');
+  });
+
   await test('마감 후에는 주문이 거부된다', async () => {
     const { data } = await J('POST', `/api/rooms/${roomCode}/orders`,
       { code: 'SNU', side: 'buy', price: 1000, qty: 10 }, { 'X-Player-Token': alice.playerToken });

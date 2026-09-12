@@ -90,17 +90,53 @@ class Room {
     this.seed = config.seed || crypto.randomBytes(4).readUInt32BE(0);
     this.game = new Game(config, this.seed);
     this.tokens = new Map();       // playerToken -> playerId
+    this.devices = new Map();      // deviceId  -> playerToken  (새로고침·재접속 복구용)
     this.createdAt = Date.now();
     this.timer = null;
     this.lastActivity = Date.now();
   }
 
-  join(name) {
-    const p = this.game.addPlayer(name);
+  /**
+   * 입장, 또는 재접속 복구.
+   *
+   * 50명이 모이면 새로고침하거나 잠깐 통신이 끊기는 사람이 반드시 나온다.
+   * 화면이 deviceId(브라우저에 보관하는 임의 문자열)를 같이 보내면,
+   * 같은 기기로 다시 들어올 때 원래 참가자로 복귀시킨다. 토큰도 그대로 돌려준다.
+   * 복귀는 게임이 시작된 뒤에도 허용한다 — 막아야 하는 건 난입이지 복귀가 아니다.
+   */
+  join(name, deviceId) {
+    const dev = deviceId ? String(deviceId).slice(0, 64) : null;
+
+    if (dev && this.devices.has(dev)) {
+      const t = this.devices.get(dev);
+      const pid = this.tokens.get(t);
+      const p = pid && this.game.players.get(pid);
+      if (p) {
+        this.lastActivity = Date.now();
+        return { playerId: p.id, playerToken: t, name: p.name, resumed: true };
+      }
+      this.devices.delete(dev);   // 설정 변경 등으로 사라진 참가자
+    }
+
+    const p = this.game.addPlayer(name);   // 시작 뒤면 여기서 ALREADY_STARTED 가 난다
     const t = token();
     this.tokens.set(t, p.id);
+    if (dev) this.devices.set(dev, t);
     this.lastActivity = Date.now();
-    return { playerId: p.id, playerToken: t, name: p.name };
+    return { playerId: p.id, playerToken: t, name: p.name, resumed: false };
+  }
+
+  /** 보관해 둔 토큰이 아직 쓸 수 있는지 확인한다 */
+  resume(playerToken) {
+    const pid = this.playerIdOf(playerToken);
+    const p = pid && this.game.players.get(pid);
+    if (!p) {
+      const e = new Error('더 이상 유효하지 않은 참가자 토큰입니다');
+      e.code = 'INVALID_TOKEN';
+      throw e;
+    }
+    this.lastActivity = Date.now();
+    return { playerId: p.id, playerToken, name: p.name, resumed: true };
   }
 
   playerIdOf(playerToken) { return this.tokens.get(playerToken) || null; }
@@ -130,7 +166,8 @@ class Room {
     for (const name of names) {
       const p = this.game.addPlayer(name);
       const t = tokenByName.get(name);
-      // 이미 나눠준 참가자 토큰을 그대로 유지해야 접속이 끊기지 않는다
+      // 이미 나눠준 참가자 토큰을 그대로 유지해야 접속이 끊기지 않는다.
+      // deviceId -> token 매핑은 토큰이 그대로이므로 손댈 필요가 없다.
       this.tokens.set(t || token(), p.id);
     }
     this.lastActivity = Date.now();
@@ -153,22 +190,54 @@ class Room {
     const snap = this.game.start();
     // 테스트는 틱을 직접 돌려 검증한다. 방 타이머가 같이 돌면 HTTP 왕복 사이에
     // 몇 틱이 지났는지가 매번 달라져(공유 난수까지 어긋난다) 결과가 재현되지 않는다.
-    if (process.env.NO_AUTO_TICK) return snap;
-    const ms = this.config.tickMs;
-    this.timer = setInterval(() => {
-      try {
-        this.game.tick();
-        if (this.game.phase === PHASE.ENDED) this.stopTimer();
-      } catch (e) {
-        console.error('[tick]', this.code, e.message);
-      }
-    }, ms);
-    if (this.timer.unref) this.timer.unref();
+    this._startTimer();
     return snap;
   }
 
   stopTimer() {
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
+  }
+
+  _startTimer() {
+    if (this.timer || process.env.NO_AUTO_TICK) return;
+    this.timer = setInterval(() => {
+      try {
+        this.game.tick();
+        if (this.game.phase === PHASE.ENDED) this.stopTimer();
+      } catch (e) { console.error('[tick]', this.code, e.message); }
+    }, this.config.tickMs);
+    if (this.timer.unref) this.timer.unref();
+  }
+
+  /**
+   * 일시정지. 틱을 멈추면 게임 시간도 같이 멈춘다 —
+   * 남은 시간이 tickNo 로 계산되기 때문에 별도 보정이 필요 없다.
+   */
+  pause() {
+    if (this.game.phase === PHASE.LOBBY) { const e = new Error('아직 시작하지 않은 게임입니다'); e.code = 'NOT_STARTED'; throw e; }
+    if (this.game.phase === PHASE.ENDED) { const e = new Error('이미 마감된 게임입니다'); e.code = 'ALREADY_ENDED'; throw e; }
+    this.stopTimer();
+    this.paused = true;
+    this.game.paused = true;
+    this.game._notice('게임이 일시정지되었습니다', 'pause');
+    return this.game.snapshot();
+  }
+
+  resumeGame() {
+    if (!this.paused) { const e = new Error('일시정지 상태가 아닙니다'); e.code = 'NOT_PAUSED'; throw e; }
+    this.paused = false;
+    this.game.paused = false;
+    this._startTimer();
+    this.game._notice('게임이 재개되었습니다', 'resume');
+    return this.game.snapshot();
+  }
+
+  kick(playerId) {
+    const r = this.game.kickPlayer(playerId);
+    for (const [t, id] of [...this.tokens]) if (id === playerId) this.tokens.delete(t);
+    for (const [d, t] of [...this.devices]) if (!this.tokens.has(t)) this.devices.delete(d);
+    this.lastActivity = Date.now();
+    return r;
   }
 
   lobbyInfo() {
@@ -177,6 +246,8 @@ class Room {
       title: this.title,
       seed: this.seed,
       phase: this.game.phase,
+      paused: this.paused,
+      connections: this.game.connections,
       players: this.game.humans().map(p => ({ id: p.id, name: p.name })),
       humanCount: this.game.humans().length,
       config: this.config,

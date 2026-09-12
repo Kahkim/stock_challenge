@@ -50,6 +50,8 @@ class Game {
     this.startedAt = null;
     this.endedAt = null;
     this._salaryCount = 0;
+    this.paused = false;      // 방이 관리한다
+    this.connections = 0;     // 지금 SSE 로 붙어 있는 화면 수. 서버가 관리한다
     this.feesCollected = 0;   // 수수료로 시장에서 빠져나간 총액(관측용)
 
     const chosen = cfg.stockCodes
@@ -89,6 +91,7 @@ class Game {
       costQty: {},
       realized: 0,         // 실현손익
       salaryTotal: 0,
+      kicked: false,       // 강퇴. 삭제하지 않는 이유는 보유 주식이 증발하면 총량 보존이 깨지기 때문
       joinedAt: Date.now(),
     };
     for (const s of this.stocks) p.holdings[s.code] = this.cfg.initialShares;
@@ -108,7 +111,7 @@ class Game {
     roster.forEach((b, i) => this._newPlayer('b' + (i + 1), b.name, true, b.type));
   }
 
-  humans() { return [...this.players.values()].filter(p => !p.isBot); }
+  humans() { return [...this.players.values()].filter(p => !p.isBot && !p.kicked); }
 
   // ── 시작 ──────────────────────────────────────────────────────
   start() {
@@ -162,6 +165,28 @@ class Game {
     for (const s of this.stocks) {
       s.fair = Math.max(1, s.fair * Math.exp(drift + gauss(this.rnd) * sigma));
     }
+  }
+
+  /**
+   * 참가자를 내보낸다. 삭제하지 않고 차단만 한다 —
+   * 삭제하면 그 사람이 들고 있던 주식이 증발해 총량 보존이 깨진다.
+   * 미체결 주문은 걷어내고 예약분을 돌려준다.
+   */
+  kickPlayer(pid) {
+    const p = this.players.get(pid);
+    if (!p) throw err('NO_PLAYER', '참가자를 찾을 수 없습니다');
+    if (p.isBot) throw err('CANNOT_KICK_BOT', '봇은 내보낼 수 없습니다');
+    for (const s of this.stocks) {
+      for (const o of s.book.openOrders(pid)) {
+        const cancelled = s.book.cancel(o.id);
+        if (!cancelled) continue;
+        if (cancelled.side === 'buy') p.cash += this._buyReserve(cancelled.price, cancelled.qty);
+        else p.holdings[s.code] = (p.holdings[s.code] || 0) + cancelled.qty;
+      }
+    }
+    p.kicked = true;
+    this._notice(`${p.name} 님이 방에서 나갔습니다`, 'kick');
+    return { playerId: pid, name: p.name };
   }
 
   /** 한 종목의 총 유통주식 (미체결 매도 예약분 포함) */
@@ -323,6 +348,7 @@ class Game {
     if (this.phase !== PHASE.IPO) throw err('NOT_IPO', '공모 시간이 아닙니다');
     const p = this.players.get(pid);
     if (!p) throw err('NO_PLAYER', '참가자를 찾을 수 없습니다');
+    if (p.kicked) throw err('KICKED', '이 방에서 내보내졌습니다');
     const s = this.stockByCode.get(code);
     if (!s) throw err('NO_STOCK', '없는 종목입니다');
     price = roundToTick(Number(price));
@@ -461,6 +487,7 @@ class Game {
     if (this.phase !== PHASE.TRADING) throw err('NOT_TRADING', '거래 시간이 아닙니다');
     const p = this.players.get(pid);
     if (!p) throw err('NO_PLAYER', '참가자를 찾을 수 없습니다');
+    if (p.kicked) throw err('KICKED', '이 방에서 내보내졌습니다');
     const s = this.stockByCode.get(code);
     if (!s) throw err('NO_STOCK', '없는 종목입니다');
     if (side !== 'buy' && side !== 'sell') throw err('BAD_SIDE', 'side 는 buy 또는 sell 이어야 합니다');
@@ -564,6 +591,7 @@ class Game {
     const locked = this._lockedMap();
     const base = this.cfg.seedMoney;
     const rows = [...this.players.values()]
+      .filter(p => !p.kicked)
       .filter(p => inc || !p.isBot)
       .map(p => {
         const invested = base + p.salaryTotal;
@@ -593,6 +621,8 @@ class Game {
       ipoRemainSec: Math.round(this.ipoRemainSec),
       remainSec: Math.round(this.tradeRemainSec),
       playerCount: this.players.size,
+      paused: this.paused,
+      connections: this.connections,
       feesCollected: Math.round(this.feesCollected),
       // 로비에서는 참가자가 속속 들어오는 걸 화면이 실시간으로 보여줘야 한다.
       // 봇은 시작할 때 생기므로 이 단계에는 사람만 있다. 시작 뒤에는 싣지 않는다(크기).

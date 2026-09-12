@@ -15,6 +15,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { RoomStore } = require('./src/rooms');
+const { Limiter } = require('./src/ratelimit');
 const { STOCK_POOL, DEFAULTS, tickSize } = require('./src/config');
 const { PHASE } = require('./src/game');
 
@@ -26,6 +27,36 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const store = new RoomStore();
 setInterval(() => store.sweep(), 10 * 60 * 1000).unref();
+
+// ── 요청 제한 ───────────────────────────────────────────────────
+// 참가자 토큰 기준이 실질적인 보호선이다. 사람이 낼 수 있는 속도를 훨씬 웃도는
+// 값이라 정상 플레이는 절대 걸리지 않고, 폭주하는 스크립트만 막는다.
+const LIMITS = {
+  order: new Limiter(Number(process.env.RL_ORDER_BURST) || 25,
+                     Number(process.env.RL_ORDER_RATE) || 12),     // 참가자당 주문
+  ip:    new Limiter(Number(process.env.RL_IP_BURST) || 1200,
+                     Number(process.env.RL_IP_RATE) || 600),        // IP당 전체 요청 (50명이 한 IP를 공유한다)
+  create: new Limiter(Number(process.env.RL_CREATE_BURST) || 10,
+                      Number(process.env.RL_CREATE_RATE) || 0.01),  // IP당 방 생성 — 시간당 36개
+};
+setInterval(() => { for (const l of Object.values(LIMITS)) l.sweep(); }, 60 * 1000).unref();
+
+const MAX_ROOMS = Number(process.env.MAX_ROOMS) || 300;
+
+function clientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
+/** 제한에 걸리면 429 를 보내고 true 를 반환한다 */
+function limited(res, limiter, key) {
+  const r = limiter.take(key);
+  if (r.ok) return false;
+  send(res, 429, { error: { code: 'RATE_LIMITED', message: '요청이 너무 잦습니다. 잠시 후 다시 시도하세요' } },
+       { 'Retry-After': Math.ceil(r.retryAfterMs / 1000) });
+  return true;
+}
 
 // ── 유틸 ────────────────────────────────────────────────────────
 const MIME = {
@@ -122,6 +153,7 @@ function openStream(req, res, room, pid) {
   });
   res.write('retry: 2000\n\n');
 
+  room.game.connections++;          // 방장 화면이 "몇 명이 붙어 있나" 를 볼 수 있게
   let lastFillSeq = 0;
   let closed = false;
   const push = (event, data) => {
@@ -141,7 +173,12 @@ function openStream(req, res, room, pid) {
   tickOnce();
   const iv = setInterval(tickOnce, PUSH_MS);
   const hb = setInterval(() => { if (!closed) res.write(': hb\n\n'); }, 15000);
-  const stop = () => { closed = true; clearInterval(iv); clearInterval(hb); };
+  const stop = () => {
+    if (closed) return;
+    closed = true;
+    room.game.connections = Math.max(0, room.game.connections - 1);
+    clearInterval(iv); clearInterval(hb);
+  };
   req.on('close', stop);
   req.on('error', stop);
   res.on('error', stop);
@@ -180,6 +217,10 @@ async function route(req, res, url) {
 
   // POST /api/rooms — 방 만들기
   if (seg.length === 2 && method === 'POST') {
+    if (limited(res, LIMITS.create, clientIp(req))) return;
+    if (store.rooms.size >= MAX_ROOMS) {
+      return fail(res, 503, 'TOO_MANY_ROOMS', '방이 너무 많습니다. 잠시 후 다시 시도하세요');
+    }
     const body = await readBody(req);
     let room;
     try { room = store.create(body.config || body, body.title); }
@@ -201,11 +242,20 @@ async function route(req, res, url) {
   // GET /api/rooms/:code — 로비 정보
   if (!tail && method === 'GET') return send(res, 200, room.lobbyInfo());
 
-  // POST /api/rooms/:code/join — 참가
+  // POST /api/rooms/:code/join — 참가 (deviceId 를 같이 보내면 재접속 복구)
   if (tail === 'join' && method === 'POST') {
     const body = await readBody(req);
-    try { return send(res, 200, Object.assign({ roomCode: room.code }, room.join(body.name))); }
-    catch (e) { return fail(res, 409, e.code || 'JOIN_FAILED', e.message); }
+    try {
+      return send(res, 200, Object.assign({ roomCode: room.code }, room.join(body.name, body.deviceId)));
+    } catch (e) { return fail(res, 409, e.code || 'JOIN_FAILED', e.message); }
+  }
+
+  // POST /api/rooms/:code/resume — 보관해 둔 토큰이 아직 유효한지 확인
+  if (tail === 'resume' && method === 'POST') {
+    const body = await readBody(req);
+    const t = body.playerToken || headerOrQuery(req, url, 'x-player-token', 'token');
+    try { return send(res, 200, Object.assign({ roomCode: room.code }, room.resume(t))); }
+    catch (e) { return fail(res, 401, e.code || 'INVALID_TOKEN', e.message); }
   }
 
   // POST /api/rooms/:code/start — 시작 (방장)
@@ -221,6 +271,28 @@ async function route(req, res, url) {
     const body = await readBody(req);
     try { return send(res, 200, room.reconfigure(body.config || body)); }
     catch (e) { return fail(res, 409, e.code || 'RECONFIG_FAILED', e.message); }
+  }
+
+  // POST /api/rooms/:code/pause — 일시정지 (방장)
+  if (tail === 'pause' && method === 'POST') {
+    if (!requireHost(res, room, req, url)) return;
+    try { return send(res, 200, room.pause()); }
+    catch (e) { return fail(res, 409, e.code || 'PAUSE_FAILED', e.message); }
+  }
+
+  // POST /api/rooms/:code/resume-game — 재개 (방장)
+  if (tail === 'resume-game' && method === 'POST') {
+    if (!requireHost(res, room, req, url)) return;
+    try { return send(res, 200, room.resumeGame()); }
+    catch (e) { return fail(res, 409, e.code || 'RESUME_FAILED', e.message); }
+  }
+
+  // POST /api/rooms/:code/kick — 참가자 내보내기 (방장)
+  if (tail === 'kick' && method === 'POST') {
+    if (!requireHost(res, room, req, url)) return;
+    const body = await readBody(req);
+    try { return send(res, 200, room.kick(body.playerId)); }
+    catch (e) { return fail(res, 400, e.code || 'KICK_FAILED', e.message); }
   }
 
   // POST /api/rooms/:code/end — 조기 마감 (방장)
@@ -256,6 +328,7 @@ async function route(req, res, url) {
   if (tail === 'ipo-bids' && method === 'POST') {
     const pid = requirePlayer(res, room, req, url);
     if (!pid) return;
+    if (limited(res, LIMITS.order, pid)) return;
     const b = await readBody(req);
     try { return send(res, 200, g.submitIpoBid(pid, b.code, b.price, b.qty)); }
     catch (e) { return fail(res, 400, e.code || 'IPO_FAILED', e.message); }
@@ -265,6 +338,7 @@ async function route(req, res, url) {
   if (tail === 'orders' && method === 'POST' && !seg[4]) {
     const pid = requirePlayer(res, room, req, url);
     if (!pid) return;
+    if (limited(res, LIMITS.order, pid)) return;
     const b = await readBody(req);
     try { return send(res, 200, g.submitOrder(pid, b.code, b.side, b.price, b.qty)); }
     catch (e) { return fail(res, 400, e.code || 'ORDER_FAILED', e.message); }
@@ -274,6 +348,7 @@ async function route(req, res, url) {
   if (tail === 'orders' && seg[4] === 'cancel' && method === 'POST') {
     const pid = requirePlayer(res, room, req, url);
     if (!pid) return;
+    if (limited(res, LIMITS.order, pid)) return;
     const b = await readBody(req);
     try { return send(res, 200, g.cancelOrder(pid, b.code, b.orderId)); }
     catch (e) { return fail(res, 400, e.code || 'CANCEL_FAILED', e.message); }
@@ -322,6 +397,8 @@ const server = http.createServer((req, res) => {
 
   if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url.pathname);
 
+  if (limited(res, LIMITS.ip, clientIp(req))) return;
+
   route(req, res, url).catch((e) => {
     if (res.headersSent) return;
     fail(res, e.code === 'BAD_JSON' || e.code === 'BODY_TOO_LARGE' ? 400 : 500,
@@ -335,4 +412,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, store, PHASE };
+module.exports = { server, store, PHASE, LIMITS };
