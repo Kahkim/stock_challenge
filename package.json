@@ -1,0 +1,16 @@
+{
+  "name": "stock-challenge",
+  "version": "0.1.0",
+  "description": "참가코드로 모이는 실시간 모의주식 대회 — 서버",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/engine.test.js && node tests/api.test.js",
+    "test:engine": "node tests/engine.test.js",
+    "test:api": "node tests/api.test.js",
+    "balance": "node tools/balance.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT",
+  "private": true
+}
