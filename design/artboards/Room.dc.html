@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #0A0C10; color: #EDEFF3; font-family: 'IBM Plex Sans KR', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #C6F24E; text-decoration: none; }
+    a:hover { color: #DCFF8A; }
+    .m { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  </style>
+</helmet>
+<div style="width:390px;min-height:1240px;box-sizing:border-box;background:#0A0C10;display:flex;flex-direction:column;">
+
+  <div style="height:56px;display:flex;align-items:center;gap:4px;padding:0 12px 0 4px;border-bottom:1px solid #242A34;">
+    <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></div>
+    <div style="font-size:17px;font-weight:600;flex-grow:1;">방 만들기</div>
+    <div style="font-size:12px;color:#5C6472;" class="m">1 / 1</div>
+  </div>
+
+  <div style="flex-grow:1;display:flex;flex-direction:column;gap:22px;padding:20px 16px 16px;">
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">방 이름</div>
+      <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#12151B;border:1px solid #2E3540;border-radius:12px;">
+        <div style="flex-grow:1;font-size:16px;font-weight:500;color:#EDEFF3;">점심값 걸고 한판</div>
+        <div style="font-size:12px;color:#5C6472;" class="m">9/20</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">한 판 시간</div>
+      <div style="display:flex;gap:4px;padding:4px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">5분</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#C6F24E;color:#0A0C10;font-size:14px;font-weight:700;">7분</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">10분</div>
+    </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">시작 자금 (1인)</div>
+      <div style="display:flex;gap:4px;padding:4px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">100만</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#C6F24E;color:#0A0C10;font-size:14px;font-weight:700;">1,000만</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">1억</div>
+    </div>
+    </div>
+
+    <div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px;">
+        <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;flex-grow:1;">거래 종목</div>
+        <div style="font-size:12px;color:#C6F24E;font-weight:600;" class="m">8 / 12 선택</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">서진해운</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">누리에너지</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">한빛전자</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">블루칩소프트</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">정우물산</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">대성바이오</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">태산중공업</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);color:#EDEFF3;font-size:13px;font-weight:600;">케이팝엔터</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #242A34;background:transparent;color:#8B93A1;font-size:13px;font-weight:500;">미래로보틱스</div>
+      <div style="height:40px;display:flex;align-items:center;padding:0 13px;border-radius:10px;border:1px solid #242A34;background:transparent;color:#8B93A1;font-size:13px;font-weight:500;">삼우화학</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">시장 변동성</div>
+      <div style="display:flex;gap:4px;padding:4px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">잔잔</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#C6F24E;color:#0A0C10;font-size:14px;font-weight:700;">보통</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">폭풍</div>
+    </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:9px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2"></path></svg>
+        <div style="font-size:11px;color:#5C6472;">봇 유동성 보통 · 돌발 뉴스 2~3회 · 체감 변동폭 ±3% 내외</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">규칙</div>
+      <div style="display:flex;flex-direction:column;background:#12151B;border:1px solid #242A34;border-radius:12px;padding:2px 14px;">
+        <div style="display:flex;align-items:center;gap:12px;height:56px;">
+        <div style="flex-grow:1;">
+          <div style="font-size:14px;font-weight:600;color:#EDEFF3;">공매도 허용</div>
+          <div style="font-size:11px;color:#5C6472;margin-top:2px;">없는 주식을 먼저 팔 수 있어요</div>
+        </div>
+        <div style="width:52px;height:32px;border-radius:16px;background:#20252E;border:1px solid #2E3540;display:flex;align-items:center;justify-content:flex-start;padding:3px;box-sizing:border-box;">
+        <div style="width:24px;height:24px;border-radius:12px;background:#5C6472;"></div>
+      </div>
+      </div>
+        <div style="height:1px;background:#242A34;"></div>
+        <div style="display:flex;align-items:center;gap:12px;height:56px;">
+        <div style="flex-grow:1;">
+          <div style="font-size:14px;font-weight:600;color:#EDEFF3;">순위 실시간 공개</div>
+          <div style="font-size:11px;color:#5C6472;margin-top:2px;">끄면 종료 후에만 공개돼요</div>
+        </div>
+        <div style="width:52px;height:32px;border-radius:16px;background:#C6F24E;border:1px solid #C6F24E;display:flex;align-items:center;justify-content:flex-end;padding:3px;box-sizing:border-box;">
+        <div style="width:24px;height:24px;border-radius:12px;background:#0A0C10;"></div>
+      </div>
+      </div>
+        <div style="height:1px;background:#242A34;"></div>
+        <div style="display:flex;align-items:center;gap:12px;height:56px;">
+        <div style="flex-grow:1;">
+          <div style="font-size:14px;font-weight:600;color:#EDEFF3;">돌발 뉴스</div>
+          <div style="font-size:11px;color:#5C6472;margin-top:2px;">가격이 크게 튀는 이벤트 발생</div>
+        </div>
+        <div style="width:52px;height:32px;border-radius:16px;background:#C6F24E;border:1px solid #C6F24E;display:flex;align-items:center;justify-content:flex-end;padding:3px;box-sizing:border-box;">
+        <div style="width:24px;height:24px;border-radius:12px;background:#0A0C10;"></div>
+      </div>
+      </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">참가 인원</div>
+      <div style="height:56px;display:flex;align-items:center;gap:14px;padding:0 8px 0 16px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+        <div style="flex-grow:1;font-size:14px;font-weight:500;color:#EDEFF3;">최대 인원</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B93A1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></svg></div>
+          <div style="width:44px;text-align:center;font-size:18px;font-weight:700;" class="m">6</div>
+          <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="padding:12px 16px 20px;border-top:1px solid #242A34;background:#0A0C10;">
+    <div style="height:56px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:#C6F24E;color:#0A0C10;font-size:16px;font-weight:700;">방 만들고 초대코드 받기</div>
+    <div style="text-align:center;font-size:11px;color:#5C6472;margin-top:10px;">만들면 6자리 초대코드가 생기고, 방장이 시작을 눌러야 장이 열려요</div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":1240}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
