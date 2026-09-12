@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #0A0C10; color: #EDEFF3; font-family: 'IBM Plex Sans KR', system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #C6F24E; text-decoration: none; }
+    a:hover { color: #DCFF8A; }
+    .m { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  </style>
+</helmet>
+<div style="width:390px;min-height:1420px;box-sizing:border-box;background:#0A0C10;display:flex;flex-direction:column;">
+
+  <div style="height:56px;display:flex;align-items:center;gap:6px;padding:0 16px 0 4px;border-bottom:1px solid #242A34;">
+    <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></div>
+    <div style="font-size:17px;font-weight:600;flex-grow:1;">방 만들기</div>
+    <div style="font-size:12px;color:#5C6472;" class="m">1 / 1</div>
+  </div>
+
+  <div style="flex-grow:1;display:flex;flex-direction:column;gap:22px;padding:20px 16px 16px;">
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">방 이름</div>
+      <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#12151B;border:1px solid #2E3540;border-radius:12px;">
+        <div style="flex-grow:1;font-size:16px;font-weight:500;color:#EDEFF3;">동문회 챌린지</div>
+        <div style="font-size:12px;color:#5C6472;" class="m">7/20</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:9px;">
+        <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;flex-grow:1;">거래 종목</div>
+        <div style="font-size:12px;color:#C6F24E;font-weight:600;" class="m">10 / 10 선택</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#8295b6;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">서울대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">1,200</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#788ca6;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">연세대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">2,500</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#bf818a;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">고려대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">3,400</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#7b9dba;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">한양대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">1,800</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#e7bd79;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">동국대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">900</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#73b09b;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">건국대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">2,200</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#81818c;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">홍익대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">5,000</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#c08a95;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">경희대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">1,500</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#8aa7c0;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">경기대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">3,000</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;height:42px;padding:0 12px;border-radius:10px;border:1px solid #C6F24E;background:rgba(198,242,78,0.10);">
+        <div style="width:8px;height:8px;border-radius:4px;background:#84b095;flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:600;color:#EDEFF3;">숭실대</div>
+        <div style="font-size:11px;color:#5C6472;" class="m">4,200</div>
+      </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-top:9px;">
+        <div style="flex-shrink:0;margin-top:-1px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2"></path></svg></div>
+        <div style="font-size:11px;color:#5C6472;line-height:1.5;">2개 이상 골라야 합니다. 목록과 초기가는 서버 <span style="color:#8B93A1;">GET /api/meta</span> 의 stockPool 을 그대로 씁니다 — 화면에 하드코딩하지 않습니다.</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">진행</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-size:11px;color:#5C6472;margin-bottom:6px;">정규장 길이</div>
+          <div style="display:flex;gap:4px;padding:4px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">5분</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">10분</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#C6F24E;color:#0A0C10;font-size:14px;font-weight:700;">15분</div>
+    </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#5C6472;margin-bottom:6px;">개장 공모</div>
+          <div style="display:flex;gap:4px;padding:4px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">없음</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">30초</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#C6F24E;color:#0A0C10;font-size:14px;font-weight:700;">45초</div>
+    </div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-top:9px;">
+        <div style="flex-shrink:0;margin-top:-1px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2"></path></svg></div>
+        <div style="font-size:11px;color:#5C6472;line-height:1.5;">공모를 켜면 전원이 주식 0주로 시작해 청약으로 시초가를 만듭니다. 끄면 바로 정규장입니다.</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">자산</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div>
+          <div style="font-size:11px;color:#5C6472;margin-bottom:6px;">1인당 시작 현금</div>
+          <div style="display:flex;gap:4px;padding:4px;background:#12151B;border:1px solid #242A34;border-radius:12px;">
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">50만</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#C6F24E;color:#0A0C10;font-size:14px;font-weight:700;">100만</div>
+      <div style="flex-grow:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:transparent;color:#8B93A1;font-size:14px;font-weight:500;">500만</div>
+    </div>
+        </div>
+        <div style="display:flex;flex-direction:column;background:#12151B;border:1px solid #242A34;border-radius:12px;padding:2px 14px;">
+          <div style="display:flex;align-items:center;gap:12px;height:64px;">
+        <div style="flex-grow:1;">
+          <div style="font-size:14px;font-weight:500;color:#EDEFF3;">월급</div>
+          <div style="font-size:11px;color:#5C6472;margin-top:2px;">매 60초 · 전원 동일</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B93A1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></svg></div>
+          <div style="min-width:74px;text-align:center;font-size:16px;font-weight:700;" class="m">100,000</div>
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+        </div>
+      </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">참가</div>
+      <div style="display:flex;flex-direction:column;background:#12151B;border:1px solid #242A34;border-radius:12px;padding:2px 14px;">
+        <div style="display:flex;align-items:center;gap:12px;height:64px;">
+        <div style="flex-grow:1;">
+          <div style="font-size:14px;font-weight:500;color:#EDEFF3;">봇 수</div>
+          <div style="font-size:11px;color:#5C6472;margin-top:2px;">사람과 완전히 같은 조건으로 참가 · 시상 제외</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B93A1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></svg></div>
+          <div style="min-width:74px;text-align:center;font-size:16px;font-weight:700;" class="m">30</div>
+          <div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:#20252E;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EDEFF3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg></div>
+        </div>
+      </div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-top:9px;">
+        <div style="flex-shrink:0;margin-top:-1px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2"></path></svg></div>
+        <div style="font-size:11px;color:#5C6472;line-height:1.5;">사람 수는 정하지 않습니다. 초대코드로 들어온 만큼 참가합니다.</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#5C6472;letter-spacing:0.04em;margin-bottom:9px;">고급 설정</div>
+      <div style="display:flex;align-items:center;gap:12px;background:#12151B;border:1px solid #242A34;border-radius:12px;padding:14px 16px;">
+        <div style="flex-grow:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:#EDEFF3;">기본값 사용 중</div>
+          <div style="font-size:11px;color:#5C6472;margin-top:3px;line-height:1.5;">인플레 5%/분 · 무상증자 최대 5% · 10주 단위 · 수수료 0.15% · 봇 성향 배합</div>
+        </div>
+        <div style="transform:rotate(180deg);flex-shrink:0;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5C6472" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="padding:12px 16px 20px;border-top:1px solid #242A34;background:#0A0C10;">
+    <div style="height:56px;display:flex;align-items:center;justify-content:center;border-radius:14px;background:#C6F24E;color:#0A0C10;font-size:16px;font-weight:700;">방 만들고 참가코드 받기</div>
+    <div style="text-align:center;font-size:11px;color:#5C6472;margin-top:10px;">POST /api/rooms → 6자리 참가코드와 방장 토큰이 발급됩니다</div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":390,"height":1420}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

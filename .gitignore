@@ -4,3 +4,6 @@ node_modules/
 
 # 저장된 방 상태
 .data/
+
+# design 스킬이 생성하는 캔버스 결과물(약 2MB, 에디터 페이로드 포함)
+design/*.html
