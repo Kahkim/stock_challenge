@@ -12,6 +12,7 @@
  */
 
 const http = require('http');
+const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const { RoomStore } = require('./src/rooms');
@@ -483,9 +484,47 @@ const server = http.createServer((req, res) => {
   });
 });
 
+/**
+ * 같은 WiFi 에 있는 참가자가 접속할 주소를 찾는다.
+ * 행사장에서는 이 주소를 참가자에게 알려줘야 하는데, 매번 찾기 번거로우므로
+ * 서버가 뜰 때 바로 보여준다.
+ */
+function lanAddresses() {
+  const out = [];
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const ni of ifaces[name] || []) {
+      if (ni.family !== 'IPv4' || ni.internal) continue;
+      out.push({ name, address: ni.address });
+    }
+  }
+  // 사설망(공유기 대역)을 앞으로 — 행사장에서 쓸 주소는 보통 이쪽이다
+  const isPrivate = (a) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a);
+  return out.sort((a, b) => (isPrivate(b.address) ? 1 : 0) - (isPrivate(a.address) ? 1 : 0));
+}
+
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
-    console.log(`모의주식 챌린지 서버 http://localhost:${PORT}  (SSE ${PUSH_MS}ms)`);
+    const lan = lanAddresses();
+    console.log('');
+    console.log('  모의주식 챌린지 서버가 떴습니다');
+    console.log('  ─────────────────────────────────────────────');
+    console.log(`  방장 화면    http://localhost:${PORT}`);
+    if (lan.length) {
+      console.log('');
+      console.log('  참가자는 같은 WiFi 에서 아래 주소로 접속하세요');
+      for (const { name, address } of lan) {
+        console.log(`      http://${address}:${PORT}`.padEnd(38) + `(${name})`);
+      }
+    } else {
+      console.log('');
+      console.log('  ⚠ 외부에서 접속할 수 있는 네트워크를 찾지 못했습니다.');
+      console.log('    WiFi 나 유선랜에 연결되어 있는지 확인하세요.');
+    }
+    console.log('  ─────────────────────────────────────────────');
+    console.log(`  SSE 푸시 ${PUSH_MS}ms · 저장 ${PERSIST_DIR ? PERSIST_DIR + ' (' + PERSIST_MS + 'ms 주기)' : '끔'}`);
+    console.log('  Ctrl+C 로 종료하면 진행 중인 방을 저장합니다');
+    console.log('');
   });
 }
 
