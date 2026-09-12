@@ -1,4 +1,5 @@
 node_modules/
+*.log
 .DS_Store
 
 # design 스킬이 생성하는 캔버스 결과물(약 2MB, 에디터 페이로드 포함)

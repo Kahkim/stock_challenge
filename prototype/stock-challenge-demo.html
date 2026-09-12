@@ -1,4 +1,4 @@
-<title>스톡 챌린지 데모</title>
+<title>Stock Challenge</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
   :root{
@@ -97,12 +97,20 @@
    이 블록만 fetch + EventSource 로 갈아끼우면 된다.  (SWAP POINT 주석 참고)
    ========================================================================= */
 const CFG = {
-  seedMoney:1000000, salaryAmount:100000, salaryIntervalSec:60, inflationPerMin:0.05,
+  seedMoney:1000000, salaryAmount:100000, salaryIntervalSec:60, inflationPerMin:0.005,
   maxBonusRate:0.05, idioVolatility:0.30, durationMin:15, ipoSec:45, tickMs:250,
   lotSize:10, feeRate:0.0015, floatCapitalRatio:0.60, botCount:30,
   botExcludeFromRanking:true, botActionRate:0.035, makerSpread:0.006, lookbackSec:120,
   botMix:{trend:.60, maker:.20, noise:.15, contra:.03, value:.02},
+  news:{enabled:true, intervalSec:70, maxActive:3, positiveRatio:0.5, impact:0.07,
+        strength:0.06, negativeMultiplier:4.5, reactionSec:40, lifeSec:90},
 };
+const NEWS_POS=['{n} 대량 매수 유입 — 매도 호가 공백','{n} 동문 매수세 결집','{n} 신고가 경신 — 추격 매수 확산',
+  '{n} 기관 순매수 전환','{n} 유통 물량 급감 — 품절주 조짐','{n} 목표가 상향 리포트 발간',
+  '{n} 거래량 폭증 — 상승 탄력 확대','{n} 저평가 매력 부각','{n} 응원단 출정 — 개인 매수 유입','{n} 대규모 단체 매수 소문'];
+const NEWS_NEG=['{n} 차익실현 매물 출회','{n} 대량 매도 물량 감지','{n} 투자심리 위축 — 매수 관망',
+  '{n} 고평가 부담 확대','{n} 목표가 하향 리포트 발간','{n} 거래량 급감 — 매수세 실종',
+  '{n} 단기 급등 피로 누적','{n} 손절 물량 확산','{n} 상승분 반납 — 눈치보기 장세','{n} 대기 매물 부담'];
 const POOL = [
   {code:'SNU',name:'서울대',initialPrice:1200,color:'#1b3f7a'},
   {code:'YON',name:'연세대',initialPrice:2500,color:'#0a2d5e'},
@@ -128,7 +136,7 @@ const pick = a => a[Math.floor(rnd()*a.length)];
 
 const G = {
   phase:'lobby', cfg:{...CFG}, speed:1, elapsed:0, ipoElapsed:0, seq:0,
-  stocks:[], players:[], me:null, notices:[], tape:[], salaryCount:0, endedAt:null,
+  stocks:[], players:[], me:null, notices:[], tape:[], news:[], newsLog:[], salaryCount:0, endedAt:null,
 };
 
 function makeStocks(codes){
@@ -151,7 +159,8 @@ function makePlayers(){
   for(let i=0;i<G.cfg.botCount;i++)
     arr.push({id:'b'+i,name:'봇'+(i+1),isBot:true,human:false,type:types[i]});
   return arr.map(p=>({...p, type:p.type||pick(['trend','trend','maker','noise','value','contra']),
-    cash:G.cfg.seedMoney, holdings:{}, cost:{}, realized:0, salaryTotal:0, orders:[],
+    cash:G.cfg.seedMoney, holdings:{}, cost:{}, bonus:{}, realized:0, salaryTotal:0, orders:[],
+    react:rnd()*CFG.news.reactionSec,
     bias:0.3+rnd()*0.4}));
 }
 
@@ -165,7 +174,7 @@ function notice(text,kind){ G.notices.push({seq:++G.seq,ts:Date.now(),text,kind}
   if(G.notices.length>40) G.notices.shift(); }
 function recordTrade(s,price,qty,side){
   G.tape.push({seq:++G.seq,code:s.code,price,qty,side,t:Math.round(G.elapsed)});
-  if(G.tape.length>40) G.tape.shift();
+  if(G.tape.length>20) G.tape.shift();
   s.last=price; s.high=Math.max(s.high,price); s.low=Math.min(s.low,price); s.volume+=qty;
 }
 /* 체결 한 건. 매수 원금은 "대기 주문이면 이미 예치됨 / 공격 주문이면 지금 지불" 로 갈린다.
@@ -248,7 +257,7 @@ function botAct(b){
   else score=(b.bias-0.5)*2 + gauss()*0.3;
   // 봇은 사람과 같은 정보(현재가·적정가)를 본다. 괴리가 벌어지면 모두가 조금씩 메우려 한다 —
   // 이게 없으면 인플레로 오른 적정가를 체결가가 못 따라가 전 종목이 -30% 저평가로 굳는다.
-  score += -val*1.5;
+  score += -val*1.5 + newsPull(s,b);
   const buy = score>0;
   const qty = buy ? Math.max(CFG.lotSize, floorLot(b.cash*0.05/s.last))
                   : Math.max(CFG.lotSize, floorLot(held*0.15));
@@ -267,11 +276,37 @@ function issueBonus(){
   let mine=[];
   for(const s of G.stocks){ let add=0;
     for(const p of G.players){ const h=p.holdings[s.code]||0; const b=Math.floor(h*rate);
-      if(b>0){ p.holdings[s.code]=h+b; add+=b; if(p.id==='me') mine.push(s.name+' +'+b); } }
+      if(b>0){ p.holdings[s.code]=h+b; p.bonus[s.code]=(p.bonus[s.code]||0)+b; add+=b;
+        if(p.id==='me') mine.push(s.name+' +'+b); } }
     s.issued+=add;
   }
   notice(`무상증자 ${(rate*100).toFixed(1)}%${mine.length?' — '+mine.join(', '):''}`,'bonus');
   return {rate,mine};
+}
+function spawnNews(){
+  const N=G.cfg.news; if(!N.enabled) return;
+  G.news=G.news.filter(x=>G.elapsed-x.t < x.lifeSec);
+  if(G.news.length>=N.maxActive) return;
+  const s=pick(G.stocks.filter(x=>!G.news.some(nw=>nw.code===x.code))); if(!s) return;
+  const sign=rnd()<N.positiveRatio?1:-1;
+  const list=sign>0?NEWS_POS:NEWS_NEG;
+  const mag=N.impact*(0.6+rnd()*0.8);
+  s.fair=Math.max(1,s.fair*(1+sign*mag));
+  const nw={id:'n'+(++G.seq),code:s.code,name:s.name,sign,
+    headline:list[Math.floor(rnd()*list.length)].replace('{n}',s.name),
+    impactPct:sign*mag*100, t:G.elapsed, lifeSec:N.lifeSec};
+  G.news.push(nw); G.newsLog.push(nw);
+  notice(nw.headline, sign>0?'news-up':'news-down');
+  if(typeof onNews==='function') onNews(nw);
+}
+/** 봇 동조 — 뉴스를 인지한 봇만 반응한다. 인지 시점은 봇마다 흩어져 있다. */
+function newsPull(s,b){
+  const N=G.cfg.news; let v=0;
+  for(const nw of G.news){ if(nw.code!==s.code) continue;
+    const age=G.elapsed-nw.t; if(age<b.react) continue;
+    const remain=Math.max(0,1-age/nw.lifeSec);
+    v += nw.sign*N.strength*(nw.sign<0?N.negativeMultiplier:1)*remain; }
+  return v;
 }
 function tick(dt){
   if(G.phase==='ipo'){
@@ -295,6 +330,8 @@ function tick(dt){
       s.history.push({t,price:s.last,fair:Math.round(s.fair)});
     if(s.history.length>1800) s.history.shift(); }
   for(const b of G.players) if(b.isBot||b.sim) if(rnd()<G.cfg.botActionRate*(dt/0.25)) botAct(b);
+  G.news=G.news.filter(x=>G.elapsed-x.t < x.lifeSec);
+  if(rnd() < dt/G.cfg.news.intervalSec) spawnNews();
   const due=Math.floor(G.elapsed/G.cfg.salaryIntervalSec);
   if(due>G.salaryCount){ G.salaryCount=due;
     for(const p of G.players){ p.cash+=G.cfg.salaryAmount; p.salaryTotal+=G.cfg.salaryAmount; }
@@ -409,16 +446,25 @@ const API = {
         float:s.float,issued:s.issued,
         changePct:(s.last/s.open-1)*100, vsFairPct:s.fair?(s.last/s.fair-1)*100:0,
         depth:depth(s), ipoDemand:s.ipoBids.reduce((a,b)=>a+b.qty,0)})),
-      ranking:rank, notices:G.notices.slice(-6), tape:G.tape.slice(-40)};
+      ranking:rank.slice(0,20), notices:G.notices.slice(-6), tape:G.tape.slice(-20),
+      news:G.news.map(x=>({id:x.id,code:x.code,name:x.name,sign:x.sign,headline:x.headline,
+        impactPct:+x.impactPct.toFixed(1),ageSec:Math.round(G.elapsed-x.t),lifeSec:x.lifeSec}))};
   },
   me(){
     const p=G.me;
+    const humans=G.players.filter(x=>x.human).map(x=>({id:x.id,nav:nav(x)})).sort((a,b)=>b.nav-a.nav);
     return {id:p.id,name:p.name,cash:Math.round(p.cash),lockedCash:Math.round(lockedCash(p)),
+      rank:humans.findIndex(x=>x.id===p.id)+1, rankTotal:humans.length,
+      tradable:G.stocks.map(s=>{
+        const restSell=p.orders.filter(o=>o.code===s.code&&o.side==='sell').reduce((a,o)=>a+o.qty,0);
+        return {code:s.code,name:s.name,last:s.last,
+          maxBuyQty:floorLot(p.cash/(s.last*(1+G.cfg.feeRate))),
+          maxSellQty:floorLot((p.holdings[s.code]||0)-restSell)};}),
       nav:Math.round(nav(p)),invested:invested(p),salaryTotal:p.salaryTotal,
       realized:Math.round(p.realized),
       holdings:G.stocks.filter(s=>(p.holdings[s.code]||0)>0).map(s=>{
         const qty=p.holdings[s.code], c=p.cost[s.code]||0, ev=qty*s.last;
-        return {code:s.code,name:s.name,color:s.color,qty,
+        return {code:s.code,name:s.name,color:s.color,qty,bonus:p.bonus[s.code]||0,
           locked:p.orders.filter(o=>o.code===s.code&&o.side==='sell').reduce((a,o)=>a+o.qty,0),
           avgPrice:Math.round(c/qty),last:s.last,evalAmount:ev,pnl:Math.round(ev-c),
           pnlPct:c?(ev/c-1)*100:0};}),
@@ -435,7 +481,7 @@ const API = {
 const $ = s => document.querySelector(s);
 const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
 const U = { view:'setup', codes:POOL.map(s=>s.code), dur:15, ipoSec:45, seed:1000000,
-            bots:30, speed:4, code:null, tab:'호가', price:0, qty:CFG.lotSize, market:false,
+            bots:30, code:null, tab:'호가', price:0, qty:CFG.lotSize, market:false,
             ipoCode:'SNU', ipoPrice:0, ipoQty:0, sort:'chg' };
 
 const n  = v => Math.round(v).toLocaleString('en-US');
@@ -473,13 +519,52 @@ function pushFill(f){
     <div class="m" style="font-size:15px;font-weight:700;color:${f.side==='buy'?'var(--up)':'var(--down)'}">
       ${f.side==='buy'?'−':'+'}${n(f.amount)}</div></div>`);
 }
+/* 돌발뉴스. 판당 약 12건이라 화면을 막는 모달은 쓸 수 없다 — 토스트 + 상단 배너로 알린다.
+   sign 과 impactPct 는 방향이 그대로 드러나므로 화면에 쓰지 않는다(헤드라인으로 판단하는 게 설계 의도).
+   즉시 체결되는 주문 버튼은 편의가 아니라 밸런스다 — 지정가를 현재가에 걸면 현금이 묶인 채 뒤처진다. */
+function onNews(nw){
+  const s=G.stocks.find(x=>x.code===nw.code); if(!s) return;
+  const me=API.me(), tr=me.tradable.find(t=>t.code===nw.code)||{maxBuyQty:0,maxSellQty:0};
+  const bpx=roundTick(s.last*1.02), spx=roundTick(s.last*0.98);
+  const canSell=tr.maxSellQty>=CFG.lotSize;
+  showToast(`<div style="display:flex;align-items:center;gap:9px">
+      <span class="badge" style="background:var(--warnT);color:var(--warn);gap:4px;letter-spacing:.04em">
+        ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',12,'var(--warn)',1.6)}돌발 뉴스</span>
+      ${dot(s.color,8)}<span style="font-size:12px;color:var(--dim)">${s.name}</span>
+      <span class="grow"></span>
+      <span class="m" style="font-size:12px;font-weight:700">${n(s.last)}</span>${fairBadge(s.vsFairPct)}</div>
+    <button data-act="stock" data-v="${nw.code}" style="display:block;width:100%;text-align:left;
+      font-size:15px;font-weight:700;line-height:1.4;margin-top:9px">${esc(nw.headline)}</button>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button data-act="newsSell" data-v="${nw.code}" ${canSell?'':'disabled'}
+        style="flex:1;height:46px;border-radius:11px;background:${canSell?'var(--downT)':'transparent'};
+        border:1px solid ${canSell?'var(--down)':'var(--line)'};color:${canSell?'var(--down)':'var(--dim2)'};
+        font-size:14px;font-weight:700">바로 매도 ${canSell?n(spx):''}</button>
+      <button data-act="newsBuy" data-v="${nw.code}"
+        style="flex:1;height:46px;border-radius:11px;background:var(--up);color:#fff;
+        font-size:14px;font-weight:700">바로 매수 ${n(bpx)}</button></div>
+    <div style="font-size:10px;color:var(--dim2);margin-top:8px">한두 호가 위아래로 질러야 즉시 체결됩니다. 지정가를 현재가에 걸면 현금이 묶인 채 밀립니다.</div>`, 11000);
+}
+function newsBanner(snap){
+  if(!snap.news.length) return '';
+  return `<div class="pad" style="padding-top:12px;display:flex;flex-direction:column;gap:6px">
+    ${snap.news.map(nw=>{const st=snap.stocks.find(x=>x.code===nw.code);
+      return `<button data-act="stock" data-v="${nw.code}" style="width:100%;text-align:left;display:flex;
+        align-items:center;gap:8px;padding:10px 12px;border-radius:11px;background:var(--warnT);
+        border:1px solid rgba(245,165,36,.3);min-height:44px">
+        ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',15,'var(--warn)',1.6)}
+        <span class="grow" style="font-size:12px;font-weight:600;line-height:1.4">${esc(nw.headline)}</span>
+        <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${nw.lifeSec-nw.ageSec}초</span>
+      </button>`;}).join('')}</div>`;
+}
 function pushSalary(b){
   const mine=(b&&b.mine&&b.mine.length)? b.mine.join(' · ') : '보유 주식이 없어 배정 없음';
   showToast(`<div style="display:flex;align-items:center;gap:10px">
     <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
       justify-content:center;background:var(--accT)">${svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',18,'var(--acc)',1.5)}</div>
     <div class="grow"><div style="font-size:13px;font-weight:700">월급 입금 · ${G.salaryCount}분차</div>
-      <div style="font-size:11px;color:var(--dim2);margin-top:2px">무상증자 ${b?(b.rate*100).toFixed(1)+'%':'—'} · ${esc(mine)}</div></div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:2px">무상증자 ${b?(b.rate*100).toFixed(1)+'%':'—'} · ${esc(mine)}</div>
+      <div style="font-size:10px;color:var(--dim2);margin-top:3px">인플레는 현금을 깎지 않습니다 — 적정가가 분당 ${(G.cfg.inflationPerMin*100).toFixed(1)}% 오릅니다</div></div>
     <div class="m" style="font-size:16px;font-weight:700;color:var(--acc)">+${n(G.cfg.salaryAmount)}</div></div>`);
 }
 function toastErr(e){ showToast(`<div style="display:flex;gap:10px;align-items:center">
@@ -511,8 +596,6 @@ function vSetup(){
     <div><div class="lbl">봇</div>${seg('bots',[{v:10,t:'10'},{v:30,t:'30'},{v:60,t:'60'}],U.bots)}
       <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
         <span>사람은 나 + 친구 5명(시뮬)입니다. 봇은 시상 순위에서 빠집니다.</span></div></div>
-    <div><div class="lbl">진행 속도 <span style="color:var(--dim2);font-weight:500">— 데모용</span></div>
-      ${seg('speed',[{v:1,t:'1×'},{v:4,t:'4×'},{v:12,t:'12×'}],U.speed)}</div>
   </div>
   <div class="sticky"><button class="cta" data-act="start" ${U.codes.length<2?'disabled':''}>게임 시작</button>
     <div style="text-align:center;font-size:11px;color:var(--dim2);margin-top:10px">
@@ -578,7 +661,6 @@ function vIpo(snap){
 /* ---- 3. 전체 시황 ---- */
 function vMarket(snap,me){
   const sorted=[...snap.stocks].sort((a,b)=> U.sort==='chg'? b.changePct-a.changePct : b.vsFairPct-a.vsFairPct);
-  const myRank=snap.ranking.find(r=>r.id==='me');
   const bonusQty = G.stocks.reduce((a,s)=>a+s.issued,0);
   return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
     <div style="display:flex;align-items:center;gap:8px">
@@ -591,20 +673,16 @@ function vMarket(snap,me){
       <div style="font-size:13px;color:var(--dim)">남음</div><div class="grow"></div>
       <div style="font-size:12px;color:var(--dim2)">사람 ${snap.humanCount} · 봇 ${snap.playerCount-snap.humanCount}</div></div>
     <div class="bar" style="margin:12px 0 10px"><i style="width:${snap.elapsedSec/(G.cfg.durationMin*60)*100}%"></i></div>
-    <div style="display:flex;align-items:center;gap:6px;padding-bottom:10px">
-      <span style="font-size:11px;color:var(--dim2)">속도</span>
-      ${[1,4,12].map(v=>`<button data-act="set" data-k="speed" data-v="${v}" aria-pressed="${U.speed===v}"
-        class="m" style="height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;
-        background:${U.speed===v?'var(--surf3)':'transparent'};border:1px solid ${U.speed===v?'var(--line2)':'var(--line)'};
-        color:${U.speed===v?'var(--text)':'var(--dim2)'}">${v}×</button>`).join('')}
-      <div class="grow"></div>
-      <button data-act="go" data-v="result" class="m" style="height:32px;padding:0 12px;border-radius:8px;
+    <div style="display:flex;align-items:center;padding-bottom:12px">
+      <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(G.cfg.salaryAmount)}/분 · 인플레 ${G.cfg.inflationPerMin*100}%/분</span>
+      <button data-act="go" data-v="result" style="height:32px;padding:0 12px;border-radius:8px;
         border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button></div></div>
 
+  ${newsBanner(snap)}
   <div class="pad" style="padding-top:14px">
     <div class="card" style="padding:14px 16px 0">
       <div style="display:flex;align-items:center"><div class="grow lbl" style="margin:0">내 총자산</div>
-        <span class="badge m" style="background:var(--accT);color:var(--acc)">${myRank?myRank.rank:'-'}위 / ${snap.humanCount}명</span></div>
+        <span class="badge m" style="background:var(--accT);color:var(--acc)">${me.rank}위 / ${me.rankTotal}명</span></div>
       <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
         <div class="m" style="font-size:28px;font-weight:700">${n(me.nav)}</div>
         <div style="font-size:14px;color:var(--dim)">원</div></div>
@@ -639,11 +717,14 @@ function vMarket(snap,me){
         background:${U.sort===k?'var(--surf3)':'transparent'};border:1px solid ${U.sort===k?'var(--line2)':'var(--line)'};
         color:${U.sort===k?'var(--text)':'var(--dim2)'}">${t}</button>`).join('')}</div>
     <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
-      <span>인플레로 적정가가 분당 ${G.cfg.inflationPerMin*100}%씩 오릅니다. 전 종목이 상승이라 등락률만으로는 판단이 안 돼요 — 괴리율을 같이 보세요.</span></div></div>
+      <span>인플레로 적정가가 분당 ${(G.cfg.inflationPerMin*100).toFixed(1)}%씩 오릅니다. 등락률은 얼마나 올랐나, 괴리율은 <b style="color:var(--dim)">적정가보다 비싼가</b>를 말합니다.</span></div></div>
   <div style="border-top:1px solid var(--line)">${sorted.map(s=>`
     <button data-act="stock" data-v="${s.code}" class="row" style="height:66px;width:100%;text-align:left">
       ${dot(s.color)}
-      <div class="grow"><div style="font-size:15px;font-weight:600">${s.name}</div>
+      <div class="grow"><div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:15px;font-weight:600">${s.name}</span>
+          ${s.issued===0?'<span class="badge" style="background:var(--surf3);color:var(--dim2)">미발행</span>':''}
+          ${snap.news.some(nw=>nw.code===s.code)?`<span class="badge" style="background:var(--warnT);color:var(--warn)">뉴스</span>`:''}</div>
         <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">적정 ${n(s.fair)}</div></div>
       ${fairBadge(s.vsFairPct)}
       <div class="rt" style="width:84px"><div class="m" style="font-size:16px;font-weight:700">${n(s.last)}</div>
@@ -664,7 +745,8 @@ function vMarket(snap,me){
       <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(p.nav)}</div>
         <div class="m" style="font-size:11px;font-weight:600;margin-top:1px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${pc(p.pnlPct)}</div></div>
     </div>`;}).join('')}</div>
-  <div style="height:24px"></div>`;
+  <div style="height:20px"></div>
+  ${bottomNav('market')}`;
 }
 </script>
 
@@ -676,7 +758,11 @@ function vStock(snap,me){
   const hold=me.holdings.find(h=>h.code===s.code);
   const myOrders=me.openOrders.filter(o=>o.code===s.code);
   const tick=tickSize(s.last);
-  const maxBuy=floorLot(me.cash/((U.market?s.last:U.price)*(1+CFG.feeRate)));
+  // 수량 상한은 서버가 계산해서 준다(me.tradable). 지정가가 현재가보다 높으면 그만큼 줄인다.
+  const tr=me.tradable.find(t=>t.code===s.code)||{maxBuyQty:0,maxSellQty:0};
+  const px=U.market?s.last:U.price;
+  const maxBuy=Math.min(tr.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate))));
+  const maxSell=tr.maxSellQty;
   const amt=(U.market?s.last:U.price)*U.qty;
   const mineAt={}; for(const o of myOrders) mineAt[o.price]=(mineAt[o.price]||0)+o.qty;
   const maxQ=Math.max(1,...s.depth.bids.map(d=>d.qty),...s.depth.asks.map(d=>d.qty));
@@ -732,8 +818,15 @@ function vStock(snap,me){
       :`<div style="padding:28px 16px;text-align:center;font-size:12px;color:var(--dim2)">아직 체결이 없습니다</div>`}</div>`;
 
   return `<div class="hdr"><button class="iconbtn" data-act="go" data-v="market" aria-label="뒤로">${iBack}</button>
-    <h1>${dot(s.color)}${s.name}</h1>
+    <h1>${dot(s.color)}${s.name}
+      ${s.issued===0?'<span class="badge" style="background:var(--surf3);color:var(--dim2)">미발행</span>':''}</h1>
     <span class="m" style="font-size:14px;font-weight:700;color:var(--acc)">${clk(snap.remainSec)}</span></div>
+  ${snap.news.filter(nw=>nw.code===s.code).map(nw=>`<div class="pad" style="padding-top:12px">
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:11px;
+      background:var(--warnT);border:1px solid rgba(245,165,36,.3)">
+      ${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',15,'var(--warn)',1.6)}
+      <span class="grow" style="font-size:12px;font-weight:600;line-height:1.4">${esc(nw.headline)}</span>
+      <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${nw.lifeSec-nw.ageSec}초</span></div></div>`).join('')}
   <div style="display:flex;align-items:flex-end;gap:12px;padding:16px 16px 14px">
     <div class="grow">
       <div style="display:flex;align-items:baseline;gap:6px">
@@ -784,7 +877,7 @@ function vStock(snap,me){
     <div style="display:flex;margin:14px 2px 8px"><span class="grow" style="font-size:12px;color:var(--dim2)">주문금액</span>
       <span class="m" style="font-size:14px;font-weight:700">${n(amt)}원</span></div>
     <div style="display:flex;margin:0 2px 14px"><span class="grow" style="font-size:12px;color:var(--dim2)">주문가능</span>
-      <span class="m" style="font-size:12px;color:var(--dim)">현금 ${n(me.cash)}원 · 최대 ${n(maxBuy)}주</span></div>
+      <span class="m" style="font-size:12px;color:var(--dim)">매수 ${n(maxBuy)}주 · 매도 ${n(maxSell)}주</span></div>
     <div style="display:flex;gap:10px">
       <button data-act="order" data-v="sell" style="flex:1;height:54px;border-radius:13px;background:var(--downT);
         border:1px solid var(--down);color:var(--down);font-size:16px;font-weight:700">매도</button>
@@ -852,6 +945,86 @@ function vResult(snap,me){
     <button class="cta" style="flex:1;width:auto" data-act="again">같은 설정으로 다시</button></div>`;
 }
 
+/* ---- 하단 탭 ---- */
+function bottomNav(active){
+  const item=(id,label,icon)=>`<button data-act="go" data-v="${id}" aria-pressed="${active===id}"
+    style="flex:1;height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px">
+    ${icon(active===id?'var(--acc)':'var(--dim2)')}
+    <span style="font-size:10px;font-weight:${active===id?700:500};color:${active===id?'var(--acc)':'var(--dim2)'}">${label}</span></button>`;
+  return `<div style="position:sticky;bottom:0;display:flex;border-top:1px solid var(--line);
+    background:var(--surf);padding:4px 0 calc(8px + env(safe-area-inset-bottom));z-index:6">
+    ${item('market','시황',c=>svg('M3 12h4l3-8 4 16 3-8h4',20,c,1.7))}
+    ${item('assets','내 자산',c=>svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',20,c,1.5))}</div>`;
+}
+
+/* ---- 내 자산 ---- */
+function vPortfolio(snap,me){
+  const totalBonus=me.holdings.reduce((a,h)=>a+h.bonus,0);
+  const evalTotal=me.nav-me.cash-me.lockedCash;
+  const holds=[...me.holdings].sort((a,b)=>b.evalAmount-a.evalAmount);
+  return `<div class="hdr"><h1>내 자산</h1>
+    <span class="m" style="font-size:14px;font-weight:700;color:var(--acc)">${clk(snap.remainSec)}</span></div>
+
+  <div class="pad" style="padding-top:16px">
+    <div class="card" style="padding:14px 16px 0">
+      <div style="display:flex;align-items:center"><div class="grow lbl" style="margin:0">총자산</div>
+        <span class="badge m" style="background:var(--accT);color:var(--acc)">${me.rank}위 / ${me.rankTotal}명</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
+        <div class="m" style="font-size:28px;font-weight:700">${n(me.nav)}</div>
+        <div style="font-size:14px;color:var(--dim)">원</div></div>
+      <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px">
+        <div class="m" style="font-size:13px;font-weight:600;color:${cl(me.nav-me.invested)}">
+          ${sg(me.nav-me.invested)} (${pc(me.nav/me.invested*100-100)})</div>
+        <div style="font-size:11px;color:var(--dim2)">누적 투입 ${n(me.invested)} 대비</div></div>
+      <div style="height:1px;background:var(--line);margin-top:14px"></div>
+      <div style="display:flex;flex-wrap:wrap">
+        ${[['현금',n(me.cash),'var(--text)'],['묶인 현금',n(me.lockedCash),'var(--dim)'],
+           ['평가금액',n(evalTotal),'var(--text)'],['실현손익',sg(me.realized),cl(me.realized)],
+           ['받은 월급',sg(me.salaryTotal),'var(--acc)'],['무상증자',totalBonus?'+'+n(totalBonus)+'주':'0주',totalBonus?'var(--acc)':'var(--dim2)']]
+          .map(([k,v,c])=>`<div style="width:50%;padding:11px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
+            <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
+      <div style="height:14px"></div></div></div>
+
+  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+    <div style="display:flex;align-items:center">
+      <div class="grow" style="font-size:14px;font-weight:700">보유 종목
+        <span style="color:var(--dim2);font-weight:500">${holds.length}</span></div>
+      <div class="m" style="font-size:11px;color:var(--dim2)">평가 ${n(evalTotal)}</div></div></div>
+  ${holds.length? `<div style="border-top:1px solid var(--line)">${holds.map(h=>`
+    <button data-act="stock" data-v="${h.code}" class="row" style="height:74px;width:100%;text-align:left">
+      ${dot(h.color)}
+      <div class="grow"><div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:15px;font-weight:600">${h.name}</span>
+          ${h.bonus?`<span class="badge m" style="background:var(--accT);color:var(--acc)">증자 +${n(h.bonus)}</span>`:''}
+          ${h.locked?`<span class="badge m" style="background:var(--surf3);color:var(--dim2)">매도중 ${n(h.locked)}</span>`:''}</div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:4px">${n(h.qty)}주 · 평단 ${n(h.avgPrice)} → ${n(h.last)}</div></div>
+      <div class="rt"><div class="m" style="font-size:15px;font-weight:700">${n(h.evalAmount)}</div>
+        <div class="m" style="font-size:12px;font-weight:600;margin-top:3px;color:${cl(h.pnl)}">${sg(h.pnl)} · ${pc(h.pnlPct)}</div></div>
+    </button>`).join('')}</div>`
+  : `<div class="pad"><div class="card" style="padding:24px 20px;text-align:center">
+      <div style="font-size:14px;font-weight:600;color:var(--dim)">보유한 주식이 없습니다</div>
+      <div style="font-size:12px;color:var(--dim2);line-height:1.6;margin-top:8px">
+        주식이 없으면 매분 들어오는 무상증자를 한 주도 받지 못합니다.<br>시황에서 종목을 골라 매수해 보세요.</div>
+      <button data-act="go" data-v="market" class="cta" style="height:48px;margin-top:16px">시황으로</button></div></div>`}
+
+  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+    <div style="display:flex;align-items:center">
+      <div class="grow" style="font-size:14px;font-weight:700">미체결 주문
+        <span style="color:var(--dim2);font-weight:500">${me.openOrders.length}</span></div>
+      ${me.lockedCash?`<div class="m" style="font-size:11px;color:var(--dim2)">묶인 현금 ${n(me.lockedCash)}</div>`:''}</div></div>
+  ${me.openOrders.length? `<div style="border-top:1px solid var(--line)">${me.openOrders.map(o=>`
+    <div class="row" style="height:64px">
+      <div class="grow"><div style="display:flex;align-items:center;gap:6px">
+          <span class="badge" style="background:${o.side==='buy'?'var(--upT)':'var(--downT)'};color:${o.side==='buy'?'var(--up)':'var(--down)'}">${o.side==='buy'?'매수':'매도'}</span>
+          <span style="font-size:14px;font-weight:600">${o.name}</span></div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:4px">${n(o.price)} × ${n(o.qty)}주 = ${n(o.price*o.qty)}원</div></div>
+      <button data-act="cancel" data-v="${o.id}" style="height:44px;padding:0 14px;border-radius:10px;
+        border:1px solid var(--line2);color:var(--dim);font-size:13px;font-weight:600">취소</button></div>`).join('')}</div>`
+  : `<div class="pad"><div style="font-size:12px;color:var(--dim2);padding:4px 2px 0">걸어둔 주문이 없습니다.</div></div>`}
+  <div style="height:20px"></div>
+  ${bottomNav('assets')}`;
+}
+
 /* ---- 라우터 · 루프 ---- */
 function go(v){ U.view=v; if(v==='stock'){U.tab='호가';} view.scrollTop=0; render(); }
 function render(){
@@ -859,6 +1032,7 @@ function render(){
   const st=view.scrollTop;
   view.innerHTML = U.view==='setup'? vSetup()
     : U.view==='ipo'? vIpo(snap)
+    : U.view==='assets'? vPortfolio(snap,me)
     : U.view==='stock'? vStock(snap,me)
     : U.view==='result'? vResult(snap,me)
     : vMarket(snap,me);
@@ -867,7 +1041,7 @@ function render(){
 }
 let last=performance.now();
 setInterval(()=>{
-  const now=performance.now(); const dt=Math.min(1,(now-last)/1000)*U.speed; last=now;
+  const now=performance.now(); const dt=Math.min(1,(now-last)/1000); last=now;
   if(G.phase==='ipo'||G.phase==='trading'){
     tick(dt);
     if(G.phase==='ipo'&&U.view!=='ipo') U.view='ipo';
@@ -903,6 +1077,18 @@ document.addEventListener('click',e=>{
   else if(a==='q'){ U.qty=Math.max(CFG.lotSize,U.qty+Number(v)*CFG.lotSize); }
   else if(a==='ratio'){ const me=API.me(); const px=U.market? s.last : U.price;
     U.qty=Math.max(CFG.lotSize,floorLot(me.cash/(px*(1+CFG.feeRate))*Number(v)/100)); }
+  else if(a==='newsBuy'||a==='newsSell'){
+    const st=G.stocks.find(x=>x.code===v), me2=API.me();
+    const t=me2.tradable.find(x=>x.code===v)||{maxBuyQty:0,maxSellQty:0};
+    const buy=a==='newsBuy';
+    const px=roundTick(st.last*(buy?1.02:0.98));
+    const cap=buy? Math.min(t.maxBuyQty, floorLot(me2.cash/(px*(1+CFG.feeRate)))) : t.maxSellQty;
+    const qty=Math.max(CFG.lotSize, floorLot(cap*0.5));
+    if(cap<CFG.lotSize){ toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
+      message:buy?'현금이 부족합니다':'보유 주식이 부족합니다'}); }
+    else { const r=API.order(v,buy?'buy':'sell',px,qty,false);
+      if(r.error) toastErr(r.error); }
+  }
   else if(a==='cancel'){ API.cancel(v); }
   else if(a==='order'){ const r=API.order(U.code,v,U.market?null:U.price,U.qty,U.market);
     if(r.error) toastErr(r.error);
