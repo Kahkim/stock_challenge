@@ -145,7 +145,9 @@ PORT=8080 node server.js
 | `botActionRate` | 0.035 | 0.001~0.5 | 봇이 1틱에 주문할 확률 |
 | `botCashBiasSpread` | 0.30 | 0~0.9 | 봇별 목표 현금비중 편차 |
 | `botSharpness` | 30 | 0~60 | 봇이 한 종목에 쏠리는 정도 |
-| `makerSpread` | 0.006 | 0.0005~0.1 | 호가제시형 봇의 호가 폭 |
+| `makerSpread` | 0.006 | 0.0005~0.1 | 호가제시형 봇이 한 단계마다 벌리는 폭 |
+| `makerLevels` | 4 | 1~10 | 호가제시형 봇이 몇 단계에 걸쳐 호가를 까는가 |
+| `ipoBidRatio` | 0.30 | 0.02~0.35 | 봇이 공모에 현금의 몇 %부터 지르는가. 시장에 풀리는 주식량을 정한다 |
 | `lookbackSec` | 120 | 3~600 | 봇이 추세를 보는 창(초) |
 | `botMix` | trend .60 / maker .20 / noise .15 / contra .03 / value .02 | — | 봇 성향 구성비 |
 
