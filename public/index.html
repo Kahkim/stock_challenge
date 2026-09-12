@@ -501,7 +501,7 @@ const MockAPI = {
 const $ = s => document.querySelector(s);
 const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
 const U = { view:'setup', codes:POOL.map(s=>s.code), dur:15, ipoSec:45, seed:1000000,
-            bots:30, code:null, tab:'호가', price:0, qty:CONF.lotSize, market:false,
+            bots:30, name:'나', code:null, tab:'호가', price:0, qty:CONF.lotSize, market:false,
             ipoCode:'SNU', ipoPrice:0, ipoQty:0, sort:'chg' };
 
 const n  = v => Math.round(v).toLocaleString('en-US');
@@ -696,10 +696,15 @@ function vMarket(snap,me){
     <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
       <div class="m" style="font-size:34px;font-weight:700">${clk(snap.remainSec)}</div>
       <div style="font-size:13px;color:var(--dim)">남음</div><div class="grow"></div>
-      <div style="font-size:12px;color:var(--dim2)">사람 ${snap.humanCount} · 봇 ${snap.playerCount-snap.humanCount}</div></div>
+      <div style="font-size:12px;color:var(--dim2)">사람 ${snap.humanCount} · 봇 ${snap.playerCount-snap.humanCount}${
+        snap.connections!=null?` · 접속 ${snap.connections}`:''}</div></div>
     <div class="bar" style="margin:12px 0 10px"><i style="width:${snap.elapsedSec/(CONF.durationMin*60)*100}%"></i></div>
     <div style="display:flex;align-items:center;padding-bottom:12px">
       <span style="font-size:11px;color:var(--dim2)" class="grow">월급 ${n(CONF.salaryAmount)}/분 · 인플레 ${CONF.inflationPerMin*100}%/분</span>
+      ${LIVE.on&&LIVE.hostToken?`<button data-act="pause" data-v="${snap.paused?0:1}"
+        style="height:32px;padding:0 12px;border-radius:8px;margin-right:6px;
+        border:1px solid ${snap.paused?'var(--acc)':'var(--line)'};
+        color:${snap.paused?'var(--acc)':'var(--dim2)'};font-size:12px">${snap.paused?'재개':'일시정지'}</button>`:''}
       <button data-act="go" data-v="result" style="height:32px;padding:0 12px;border-radius:8px;
         border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button></div></div>
 
@@ -966,6 +971,9 @@ function vResult(snap,me){
         <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${cl(s.changePct)}">${pc(s.changePct)}</div></div>
       <div class="rt" style="width:72px"><div class="m" style="font-size:10px;color:var(--dim2)">거래 ${n(s.volume)}</div>
         <div class="m" style="font-size:10px;color:var(--dim2);margin-top:4px">발행 ${n(s.issued)}</div></div></div>`).join('')}</div>
+  ${LIVE.on?`<div class="pad" style="padding-top:18px;display:flex;gap:10px">
+    <a class="ghost" style="flex:1;text-decoration:none" href="${LiveAPI.csv('ranking')}" download>순위 CSV</a>
+    <a class="ghost" style="flex:1;text-decoration:none" href="${LiveAPI.csv('stocks')}" download>종목 CSV</a></div>`:''}
   <div class="sticky" style="display:flex;gap:10px">
     <button class="ghost" style="width:120px;height:54px" data-act="go" data-v="setup">설정으로</button>
     <button class="cta" style="flex:1;width:auto" data-act="again">같은 설정으로 다시</button></div>`;
@@ -1064,6 +1072,12 @@ function render(){
     : U.view==='result'? vResult(snap,me)
     : vMarket(snap,me);
   view.scrollTop=st;
+  modalEl.innerHTML = snap.paused ? `<div class="modalbg">
+    <div class="modal" style="text-align:center;padding:32px 24px">
+      <div style="display:flex;justify-content:center">${svg('M9 6v12M15 6v12',34,'var(--acc)',2)}</div>
+      <div style="font-size:20px;font-weight:700;margin-top:14px">일시정지</div>
+      <div style="font-size:13px;color:var(--dim);line-height:1.6;margin-top:8px">
+        방장이 게임을 멈췄습니다. 남은 시간도 함께 멈춰 있습니다.</div></div></div>` : '';
   if(U.view==='stock'&&U.tab==='차트') drawChart();
 }
 function routePhase(ph){
@@ -1136,6 +1150,7 @@ document.addEventListener('click',async e=>{
     else { const r=await API.order(v,buy?'buy':'sell',px,qty,false);
       if(r.error) toastErr(r.error); }
   }
+  else if(a==='pause'){ if(LIVE.on) { const r=await LiveAPI.pause(v==='1'); if(r&&r.error) toastErr(r.error); } }
   else if(a==='cancel'){ await API.cancel(v); }
   else if(a==='order'){ const r=await API.order(U.code,v,U.market?null:U.price,U.qty,U.market);
     if(r.error) toastErr(r.error);
@@ -1151,6 +1166,16 @@ document.addEventListener('click',async e=>{
    (Artifact 는 외부 네트워크가 막혀 있어 항상 더미로 떨어진다)
    ========================================================================= */
 API = MockAPI;
+function lsGet(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
+/** 기기 식별자. 이게 없으면 새로고침한 참가자가 게임에서 영구히 튕긴다. */
+function deviceId(){
+  let d=lsGet('sc.device');
+  if(!d){ d = (crypto.randomUUID? crypto.randomUUID() : 'd'+Math.random().toString(36).slice(2)+Date.now());
+    lsSet('sc.device', d); }
+  return d;
+}
 const LIVE = { on:false, code:null, hostToken:null, token:null, playerId:null,
                snap:null, me:null, es:null, seenNews:new Set(), lastNotice:0, prevHold:null };
 /** 무상증자 누적. 서버가 개인별 배정량을 주지 않으므로 화면이 푸시마다 역산한다.
@@ -1180,6 +1205,8 @@ async function jreq(method,url,body,extra){
     headers:{'Content-Type':'application/json',...(extra||{})},
     body: body===undefined? undefined : JSON.stringify(body)});
   let j=null; try{ j=await r.json(); }catch(e){ j=null; }
+  if(r.status===429){ const wait=r.headers.get('Retry-After')||'1';
+    return {error:{code:'RATE_LIMITED',message:`주문이 너무 잦습니다 — ${wait}초 뒤 다시`}}; }
   if(!r.ok && (!j||!j.error)) return {error:{code:'HTTP_'+r.status,message:'서버 오류 ('+r.status+')'}};
   return j||{};
 }
@@ -1212,6 +1239,15 @@ function onLiveEvent(d){
   }
 }
 
+function openStream(){
+  if(LIVE.es){ try{LIVE.es.close();}catch(e){} }
+  LIVE.es = new EventSource(`/api/rooms/${LIVE.code}/stream?token=${encodeURIComponent(LIVE.token)}`);
+  LIVE.es.addEventListener('state', ev=>{
+    let d=null; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+    LIVE.snap=d.snapshot||LIVE.snap; LIVE.me=d.me||LIVE.me;
+    syncConf(LIVE.snap); onLiveEvent(d);
+  });
+}
 const LiveAPI = {
   getMeta: () => jreq('GET','/api/meta'),
   async createRoom(cfg){
@@ -1219,18 +1255,14 @@ const LiveAPI = {
     const r1 = await jreq('POST','/api/rooms',{title:'Stock Challenge',config:cfg});
     if(r1.error) return r1;
     LIVE.code=r1.roomCode; LIVE.hostToken=r1.hostToken;
-    const r2 = await jreq('POST',`/api/rooms/${LIVE.code}/join`,{name:'나'});
+    const r2 = await jreq('POST',`/api/rooms/${LIVE.code}/join`,{name:U.name||'나',deviceId:deviceId()});
     if(r2.error) return r2;
-    LIVE.token=r2.playerToken; LIVE.playerId=r2.playerId;
+    LIVE.token=r2.playerToken; LIVE.playerId=r2.playerId; LIVE.name=r2.name;
     const r3 = await jreq('POST',`/api/rooms/${LIVE.code}/start`,{},hostHdr());
     if(r3.error) return r3;
     LIVE.snap=r3.snapshot||r3; LIVE.me=null;
-    LIVE.es = new EventSource(`/api/rooms/${LIVE.code}/stream?token=${encodeURIComponent(LIVE.token)}`);
-    LIVE.es.addEventListener('state', ev=>{
-      let d=null; try{ d=JSON.parse(ev.data); }catch(e){ return; }
-      LIVE.snap=d.snapshot||LIVE.snap; LIVE.me=d.me||LIVE.me;
-      syncConf(LIVE.snap); onLiveEvent(d);
-    });
+    openStream();
+    lsSet('sc.session',{code:LIVE.code,playerToken:LIVE.token,hostToken:LIVE.hostToken});
     return {roomCode:LIVE.code};
   },
   ipoBid: (code,price,qty) =>
@@ -1244,7 +1276,9 @@ const LiveAPI = {
     return jreq('POST',`/api/rooms/${LIVE.code}/orders/cancel`,{code:o.code,orderId},playerHdr());
   },
   end: () => LIVE.code? jreq('POST',`/api/rooms/${LIVE.code}/end`,{},hostHdr()) : {},
-  reset(){ if(LIVE.es){ try{LIVE.es.close();}catch(e){} } LIVE.es=null;
+  pause: (on) => jreq('POST',`/api/rooms/${LIVE.code}/${on?'pause':'resume-game'}`,{},hostHdr()),
+  csv: (type) => `/api/rooms/${LIVE.code}/result.csv?type=${type}`,
+  reset(){ if(LIVE.es){ try{LIVE.es.close();}catch(e){} } LIVE.es=null; lsDel('sc.session');
     LIVE.prevHold=null; for(const k in BONUS) delete BONUS[k];
     LIVE.code=LIVE.hostToken=LIVE.token=LIVE.playerId=null;
     LIVE.snap=null; LIVE.me=null; LIVE.seenNews=new Set(); LIVE.lastNotice=0; },
@@ -1264,6 +1298,19 @@ const LiveAPI = {
     clearTimeout(t);
     if(r.ok){ const j=await r.json(); if(j&&j.ok){ LIVE.on=true; API=LiveAPI; } }
   }catch(e){ /* Artifact 등 서버가 없는 곳 — 더미로 간다 */ }
+  if(LIVE.on){
+    const saved=lsGet('sc.session');
+    if(saved && saved.code && saved.playerToken){
+      const r=await jreq('POST',`/api/rooms/${saved.code}/resume`,{playerToken:saved.playerToken});
+      if(!r.error){
+        LIVE.code=saved.code; LIVE.hostToken=saved.hostToken;
+        LIVE.token=r.playerToken||saved.playerToken; LIVE.playerId=r.playerId; LIVE.name=r.name;
+        openStream(); U.view='market';
+        showToast(`<div style="font-size:13px;font-weight:700">진행 중인 판으로 복귀했습니다</div>
+          <div style="font-size:11px;color:var(--dim2);margin-top:3px">${esc(r.name||'')} · ${esc(saved.code)}</div>`,3000);
+      } else lsDel('sc.session');
+    }
+  }
   const meta = LIVE.on ? await API.getMeta().catch(()=>null) : null;
   if(meta && meta.stockPool && meta.stockPool.length){
     POOL.length=0; for(const s of meta.stockPool) POOL.push(s);
