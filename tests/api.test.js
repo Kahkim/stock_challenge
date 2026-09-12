@@ -4,6 +4,9 @@
  * 실행: node tests/api.test.js
  */
 const assert = require('assert');
+// 방이 스스로 틱을 돌리지 않게 해서, 진행을 테스트가 전적으로 통제하도록 만든다.
+// server 를 require 하기 전에 켜야 한다.
+process.env.NO_AUTO_TICK = '1';
 const { server, store } = require('../server');
 
 let pass = 0, fail = 0;
@@ -24,7 +27,13 @@ const J = async (method, p, body, headers) => {
   try { data = await r.json(); } catch (_) {}
   return { status: r.status, data };
 };
-/** 방의 게임을 실시간 대기 없이 앞으로 감는다 */
+/**
+ * 방의 게임을 실시간 대기 없이 앞으로 감는다.
+ *
+ * 방은 자기 setInterval 로도 틱을 돌린다. 그게 켜져 있으면 테스트가 수동으로 감는 것과
+ * 경합해서 결과가 매번 달라진다(실제로 5회 중 3회가 서로 다른 지점에서 실패했다).
+ * 그래서 첫 호출 때 방 타이머를 끄고, 이후로는 테스트가 진행을 전적으로 통제한다.
+ */
 const fastForward = (code, n) => {
   const room = store.get(code);
   for (let i = 0; i < n; i++) room.game.tick();
@@ -56,7 +65,7 @@ async function main() {
     const { status, data } = await J('POST', '/api/rooms', {
       title: '동문회 챌린지',
       config: { stockCodes: ['SNU', 'YON', 'KOR', 'HYU'], botCount: 20, ipoSec: 3,
-                durationMin: 2, tickMs: 100, salaryIntervalSec: 20 },
+                durationMin: 2, tickMs: 100, salaryIntervalSec: 20, seed: 20260912 },
     });
     assert.strictEqual(status, 201);
     assert.match(data.roomCode, /^[A-Z2-9]{6}$/);
@@ -64,6 +73,22 @@ async function main() {
     assert.strictEqual(data.config.botCount, 20);
     assert.strictEqual(data.config.stockCodes.length, 4);
     roomCode = data.roomCode; hostToken = data.hostToken;
+  });
+
+  await test('같은 시드로 방을 만들면 같은 판이 재현된다', async () => {
+    const mk = async () => {
+      const { data } = await J('POST', '/api/rooms', {
+        config: { stockCodes: ['SNU', 'YON', 'KOR'], botCount: 12, ipoSec: 2,
+                  durationMin: 2, tickMs: 100, seed: 777 },
+      });
+      await J('POST', `/api/rooms/${data.roomCode}/join`, { name: '재현' });
+      await J('POST', `/api/rooms/${data.roomCode}/start`, {}, { 'X-Host-Token': data.hostToken });
+      fastForward(data.roomCode, 300);
+      const g = store.get(data.roomCode).game;
+      return g.stocks.map(s => `${s.code}:${s.last}:${s.volume}`).join('|');
+    };
+    const a = await mk(), b = await mk();
+    assert.strictEqual(a, b, `같은 시드인데 결과가 다르다\n  ${a}\n  ${b}`);
   });
 
   await test('방 만들 때 잘못된 값은 안전한 범위로 정리된다', async () => {
@@ -106,6 +131,32 @@ async function main() {
     assert.strictEqual(data.stocks.length, 4);
   });
 
+  await test('로비 스트림에 참가자 명단이 실시간으로 실려 온다', async () => {
+    const { data } = await J('GET', `/api/rooms/${roomCode}/state`);
+    assert.strictEqual(data.snapshot.phase, 'lobby');
+    assert.ok(Array.isArray(data.snapshot.players), '로비인데 참가자 명단이 없다');
+    assert.deepStrictEqual(data.snapshot.players.map(p => p.name), ['앨리스', '밥']);
+  });
+
+  await test('시작 전에는 방장이 설정을 바꿀 수 있고 참가자 토큰은 그대로 유지된다', async () => {
+    const r = await J('POST', `/api/rooms/${roomCode}/config`,
+      { config: { botCount: 24, durationMin: 2 } }, { 'X-Host-Token': hostToken });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.data.config.botCount, 24);
+    assert.deepStrictEqual(r.data.players.map(p => p.name), ['앨리스', '밥']);
+    // 기존 토큰으로 계속 조회된다
+    const me = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
+    assert.strictEqual(me.status, 200);
+    assert.strictEqual(me.data.name, '앨리스');
+    alice.playerId = me.data.id;      // 방을 다시 만들었으므로 id 는 바뀐다
+  });
+
+  await test('방장이 아니면 설정을 바꿀 수 없다', async () => {
+    const r = await J('POST', `/api/rooms/${roomCode}/config`, { config: { botCount: 1 } });
+    assert.strictEqual(r.status, 403);
+    assert.strictEqual(r.data.error.code, 'NOT_HOST');
+  });
+
   await test('방장 토큰 없이는 시작할 수 없다', async () => {
     const { status, data } = await J('POST', `/api/rooms/${roomCode}/start`);
     assert.strictEqual(status, 403);
@@ -121,12 +172,13 @@ async function main() {
 
   await test('공모 청약이 들어가고 증거금이 예치된다', async () => {
     const before = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
+    // 봇 추세형은 초기가의 최대 1.35배까지 지른다. 확실히 배정받으려면 그보다 높게.
     const r = await J('POST', `/api/rooms/${roomCode}/ipo-bids`,
-      { code: 'SNU', price: 1300, qty: 200 }, { 'X-Player-Token': alice.playerToken });
+      { code: 'SNU', price: 1800, qty: 200 }, { 'X-Player-Token': alice.playerToken });
     assert.strictEqual(r.status, 200);
-    assert.strictEqual(r.data.reserved, 1300 * 200);
+    assert.strictEqual(r.data.reserved, 1800 * 200);
     const after = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
-    assert.strictEqual(before.data.cash - after.data.cash, 1300 * 200);
+    assert.strictEqual(before.data.cash - after.data.cash, 1800 * 200);
   });
 
   await test('토큰이 틀리면 401', async () => {
@@ -203,7 +255,12 @@ async function main() {
       const st = room.game.stockByCode.get(h.code);
       const other = [...room.game.players.values()].find(p => p.id !== alice.playerId);
       other.cash += 50_000_000;
-      room.game.submitOrder(other.id, h.code, 'buy', Math.round(st.last * 1.05), 200);
+      // 현재가 위에 걸면 매도 호가에 그대로 체결되어 매수 호가가 남지 않는다.
+      // 체결되지 않고 장부에 남도록 최우선 매도호가보다 낮게 건다.
+      const ask = st.book.bestAsk();
+      const bidPx = Math.round(Math.min(st.last, ask ? ask * 0.99 : st.last) * 0.99);
+      room.game.submitOrder(other.id, h.code, 'buy', bidPx, 200);
+      assert.ok(st.book.bestBid() !== null, '상대 매수 호가를 만들지 못했다');
     }
     const r = await J('POST', `/api/rooms/${roomCode}/orders`,
       { code: h.code, side: 'sell', price: 'market', qty: 10 }, { 'X-Player-Token': alice.playerToken });
@@ -234,6 +291,32 @@ async function main() {
     assert.ok(got.me && got.me.id === alice.playerId, '본인 잔고가 안 옴');
   });
 
+  await test('내 상태에 본인 순위와 종목별 매매 가능 수량이 들어온다', async () => {
+    const { data } = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
+    assert.ok(data.rank >= 1 && data.rank <= data.rankTotal, `순위 ${data.rank}/${data.rankTotal}`);
+    assert.strictEqual(data.tradable.length, 4, '참여 종목 수만큼 나와야 한다');
+    for (const t of data.tradable) {
+      assert.ok(t.maxBuyQty >= 0 && t.maxBuyQty % 10 === 0, `${t.code} maxBuyQty ${t.maxBuyQty}`);
+      assert.ok(t.maxSellQty >= 0 && t.maxSellQty % 10 === 0, `${t.code} maxSellQty ${t.maxSellQty}`);
+    }
+    // maxBuyQty 만큼은 실제로 살 수 있어야 한다
+    const buyable = data.tradable.find(t => t.maxBuyQty >= 10);
+    if (buyable) {
+      const r = await J('POST', `/api/rooms/${roomCode}/orders`,
+        { code: buyable.code, side: 'buy', price: buyable.last, qty: buyable.maxBuyQty },
+        { 'X-Player-Token': alice.playerToken });
+      assert.strictEqual(r.status, 200, `maxBuyQty 만큼 주문했는데 거부됨: ${JSON.stringify(r.data)}`);
+    }
+  });
+
+  await test('순위표는 상위 일부만 실어 보낸다 (대역폭)', async () => {
+    const { data } = await J('GET', `/api/rooms/${roomCode}/state`);
+    assert.ok(data.snapshot.ranking.length <= 20, `순위표 ${data.snapshot.ranking.length}명`);
+    assert.ok(data.snapshot.tape.length <= 20, `체결 테이프 ${data.snapshot.tape.length}건`);
+    const bytes = Buffer.byteLength(JSON.stringify(data.snapshot));
+    assert.ok(bytes < 9000, `스냅샷이 ${(bytes/1024).toFixed(1)}KB — 50명이면 대역폭이 과하다`);
+  });
+
   await test('관전 모드(토큰 없음)는 공개 정보만 받는다', async () => {
     const { data } = await J('GET', `/api/rooms/${roomCode}/state`);
     assert.ok(data.snapshot);
@@ -251,9 +334,7 @@ async function main() {
   });
 
   await test('마감 후 결과에 사람 순위와 전체 순위가 모두 나온다', async () => {
-    const room = store.get(roomCode);
     fastForward(roomCode, 2000);                 // durationMin 2 · tickMs 100
-    room.stopTimer();
     const { data } = await J('GET', `/api/rooms/${roomCode}/result`);
     assert.strictEqual(data.phase, 'ended');
     assert.strictEqual(data.humanRanking.length, 2);
@@ -261,6 +342,34 @@ async function main() {
     assert.ok(data.humanRanking.every(r => !r.isBot));
     assert.ok(data.feesCollected >= 0);
     for (let i = 1; i < data.ranking.length; i++) assert.ok(data.ranking[i - 1].nav >= data.ranking[i].nav);
+  });
+
+  await test('시작된 뒤에는 설정을 바꿀 수 없다', async () => {
+    const r = await J('POST', `/api/rooms/${roomCode}/config`,
+      { config: { botCount: 1 } }, { 'X-Host-Token': hostToken });
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual(r.data.error.code, 'ALREADY_STARTED');
+  });
+
+  await test('방장이 조기 마감할 수 있다', async () => {
+    const mk = await J('POST', '/api/rooms', {
+      config: { stockCodes: ['SNU', 'YON'], botCount: 8, ipoSec: 1, durationMin: 30,
+                tickMs: 100, seed: 4242 },
+    });
+    const c = mk.data.roomCode;
+    await J('POST', `/api/rooms/${c}/join`, { name: '참가' });
+    await J('POST', `/api/rooms/${c}/start`, {}, { 'X-Host-Token': mk.data.hostToken });
+    fastForward(c, 80);
+    const before = await J('GET', `/api/rooms/${c}/state`);
+    assert.strictEqual(before.data.snapshot.phase, 'trading');
+    const nope = await J('POST', `/api/rooms/${c}/end`);
+    assert.strictEqual(nope.status, 403, '아무나 마감할 수 있으면 안 된다');
+    const r = await J('POST', `/api/rooms/${c}/end`, {}, { 'X-Host-Token': mk.data.hostToken });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.data.phase, 'ended');
+    const result = await J('GET', `/api/rooms/${c}/result`);
+    assert.strictEqual(result.data.phase, 'ended');
+    assert.ok(result.data.humanRanking.length === 1);
   });
 
   await test('마감 후에는 주문이 거부된다', async () => {

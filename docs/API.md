@@ -111,11 +111,13 @@ PORT=8080 node server.js
 {
   "roomCode": "SC6NSN",
   "hostToken": "5a75c22adcba8d9da699bdfef5a5522a",
+  "seed": 3491882017,
   "title": "동문회 챌린지",
   "config": { "...정리된 전체 설정..." },
   "lobby": { "...아래 GET /api/rooms/{code} 와 동일..." }
 }
 ```
+`config.seed` 를 직접 넣으면 **같은 판이 그대로 재현**됩니다. 리허설을 반복하거나 문제 상황을 다시 만들 때 쓰세요. 넣지 않으면 매번 다른 판이 되고, 그때 쓰인 시드가 응답의 `seed` 로 돌아옵니다.
 
 값이 범위를 벗어나면 **거절하지 않고 안전한 범위로 잘라서** 돌려줍니다(`botCount: 99999` → `500`).
 응답의 `config` 가 실제 적용된 값이므로 그걸 화면에 다시 표시하세요.
@@ -150,6 +152,7 @@ PORT=8080 node server.js
 | `ipoBidRatio` | 0.30 | 0.02~0.35 | 봇이 공모에 현금의 몇 %부터 지르는가. 시장에 풀리는 주식량을 정한다 |
 | `lookbackSec` | 120 | 3~600 | 봇이 추세를 보는 창(초) |
 | `botMix` | trend .60 / maker .20 / noise .15 / contra .03 / value .02 | — | 봇 성향 구성비 |
+| `seed` | (무작위) | 정수 | 넣으면 같은 판이 재현된다 |
 
 </details>
 
@@ -173,8 +176,22 @@ PORT=8080 node server.js
 ```
 `phase` 가 `lobby` 가 아니면 **409 ALREADY_STARTED**. 게임 시작 후 난입은 막혀 있습니다.
 
+### `POST /api/rooms/{code}/config` — 시작 전 설정 변경 *(방장)*
+`phase === "lobby"` 일 때만. 사람이 예상보다 적게(또는 많이) 왔을 때 봇 수나 진행 시간을 손볼 수 있습니다.
+요청 형식은 방 만들기와 같고(`{ "config": { ... } }`), 넘긴 항목만 덮어씁니다.
+응답은 `GET /api/rooms/{code}` 와 동일한 로비 정보입니다.
+
+**이미 입장한 참가자의 `playerToken` 은 그대로 유지됩니다** — 다시 입장시킬 필요 없습니다.
+다만 내부적으로 판을 다시 만들기 때문에 **`playerId` 는 바뀝니다.** 화면이 `playerId` 를 들고 있다면
+응답 뒤 `GET /me` 로 갱신하세요. 시작된 뒤에 호출하면 `409 ALREADY_STARTED` 입니다.
+
 ### `POST /api/rooms/{code}/start` — 시작 *(방장)*
 헤더 `X-Host-Token` 필요. 응답은 아래 **Snapshot** 과 동일합니다.
+
+### `POST /api/rooms/{code}/end` — 조기 마감 *(방장)*
+남은 시간과 무관하게 즉시 마감합니다. 행사 진행상 끊어야 할 때 쓰세요.
+미체결 주문은 전부 취소되고 예약분이 반환됩니다. 응답은 마감 시점의 **Snapshot** 입니다.
+아직 시작하지 않았으면 `409 NOT_STARTED`.
 
 ### `POST /api/rooms/{code}/ipo-bids` — 개장 공모 청약 *(참가자)*
 `phase === "ipo"` 일 때만. 한 종목에 여러 번 낼 수 있습니다.
@@ -271,6 +288,9 @@ es.addEventListener('state', (e) => {
   "remainSec": 585,              // 정규장 남은 시간 — 화면 카운트다운
   "playerCount": 32,             // 봇 포함
   "humanCount": 2,
+  "players": [                   // phase === "lobby" 일 때만. 로비 화면의 참가자 명단
+    { "id": "p1_6ze7", "name": "앨리스" }
+  ],
   "feesCollected": 41200,
   "config": { "lotSize": 10, "feeRate": 0.0015, "seedMoney": 1000000,
               "salaryAmount": 100000, "salaryIntervalSec": 60,
@@ -301,13 +321,15 @@ es.addEventListener('state', (e) => {
   }],
 
   "ranking": [ { "rank": 1, "id": "p1_6ze7", "name": "앨리스", "isBot": false,
-                 "nav": 3688125, "pnl": 688125, "pnlPct": 22.94 } ],
+                 "nav": 3688125, "pnl": 688125, "pnlPct": 22.94 } ],   // 상위 20명까지만
   "notices": [ { "seq": 164, "ts": 1789201076966, "text": "무상증자 5% — 보유 주식 2,810주 추가 배정", "kind": "bonus" } ],
   "tape":    [ { "seq": 191, "code": "HYU", "price": 1765, "qty": 10, "side": "buy", "t": 128 } ]
 }
 ```
 
-- `ranking` 은 기본적으로 **사람만** 포함합니다(`botExcludeFromRanking: true`). 상위 50명까지.
+- `ranking` 은 기본적으로 **사람만** 포함합니다(`botExcludeFromRanking: true`). **상위 20명까지만** 실려 옵니다 — 매 400ms 마다 나가는 데이터라 전부 싣으면 페이로드의 43%를 차지합니다. **본인 순위는 `me.rank` / `me.rankTotal` 로 따로 옵니다.**
+- `tape` 는 최근 20건입니다.
+- `players` 는 로비 단계에서만 옵니다. 시작 뒤에는 없습니다(봇까지 실으면 커집니다).
 - `notices[].kind`: `info` · `salary` · `bonus` · `ipo` · `open` · `close` · `news-up` · `news-down`. 종류별로 색을 다르게 주면 좋습니다. 뉴스는 배너나 토스트로 크게 띄우세요.
 - `news` 는 **지금 효력이 살아 있는 뉴스만** 담습니다. 지나간 뉴스 전체는 `notices` 또는 결과 API 의 `newsLog` 에 있습니다.
 - `tape` 는 최근 40건의 전체 체결 내역입니다. `side` 는 **체결을 일으킨 쪽**(공격자)이라 매수면 상승 체결입니다.
@@ -318,6 +340,7 @@ es.addEventListener('state', (e) => {
 ```jsonc
 {
   "id": "p1_6ze7", "name": "앨리스", "isBot": false,
+  "rank": 3, "rankTotal": 24,    // 내 순위 (순위표에 안 실려도 항상 온다)
   "cash": 2445000,               // 즉시 쓸 수 있는 현금
   "lockedCash": 120000,          // 미체결 매수 주문에 묶인 현금
   "nav": 3688125,                // 총자산 = 현금 + 묶인현금 + 보유주식 평가액
@@ -332,6 +355,12 @@ es.addEventListener('state', (e) => {
     "evalAmount": 1243125, "pnl": 688125, "pnlPct": 123.99
   }],
 
+  "tradable": [{                 // 참여 종목 전체. 지금 낼 수 있는 최대 수량
+    "code": "SNU", "name": "서울대", "last": 1105,
+    "maxBuyQty": 2210,           // 현재가 기준, 수수료 포함해서 살 수 있는 최대 (lotSize 배수)
+    "maxSellQty": 1120           // 미체결 매도에 묶이지 않은 보유분 (lotSize 배수)
+  }],
+
   "openOrders": [ { "id": "o812", "code": "YON", "name": "연세대",
                     "side": "buy", "price": 2480, "qty": 60 } ],
 
@@ -344,6 +373,7 @@ es.addEventListener('state', (e) => {
 - 수익률은 `nav / invested - 1` 로 계산하세요. 월급이 들어오면 `invested` 도 같이 커지므로 공평합니다.
 - `avgPrice` 는 수수료 포함 매입원가 기준입니다. 무상증자를 받으면 수량만 늘어 **평균단가가 내려갑니다.**
 - `tag` 가 `"공모"` 면 개장 공모 배정분입니다.
+- **`tradable` 을 수량 입력의 상한으로 쓰세요.** 부하 테스트에서 거부된 주문의 **83%가 `INSUFFICIENT_CASH`** 였습니다. 화면이 직접 계산하면 수수료·호가단위 때문에 틀리기 쉽습니다. `maxBuyQty` 는 **현재가 기준**이므로, 지정가를 현재가보다 높게 넣으면 그만큼 줄여야 합니다.
 
 ---
 
@@ -361,6 +391,7 @@ es.addEventListener('state', (e) => {
 | `ALREADY_STARTED` | 409 | 시작된 방에 참가 시도 | "이미 시작된 게임입니다" |
 | `NO_PLAYERS` | 409 | 참가자 0명인데 시작 | 시작 버튼 비활성화 |
 | `NOT_HOST` | 403 | 방장 토큰 불일치 | — |
+| `NOT_STARTED` | 409 | 시작 전에 조기 마감 시도 | — |
 | `INVALID_TOKEN` | 401 | 참가자 토큰 불일치 | 재입장 유도 |
 | `NOT_TRADING` | 400 | 거래 시간이 아님 | 주문 UI 잠그기 |
 | `NOT_IPO` | 400 | 공모 시간이 아님 | 청약 UI 잠그기 |
@@ -429,5 +460,8 @@ es.addEventListener('state', (e) => {
 | 전체 종목 현황판 | `snapshot.stocks[]` 전체 |
 | 순위표 | `snapshot.ranking[]` |
 | 남은 시간 | `snapshot.remainSec` (공모 중에는 `ipoRemainSec`) |
+| 내 순위 | `me.rank` / `me.rankTotal` |
+| 수량 입력 상한 | `me.tradable[].maxBuyQty` / `maxSellQty` |
+| 로비 참가자 명단 | `snapshot.players` (로비 단계에서만) |
 | 공지 배너 | `snapshot.notices[]` |
 | 돌발뉴스 배너 | `snapshot.news[]` (활성) + `notices[].kind === "news-up" / "news-down"` |

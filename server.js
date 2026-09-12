@@ -185,7 +185,7 @@ async function route(req, res, url) {
     try { room = store.create(body.config || body, body.title); }
     catch (e) { return fail(res, 400, e.code || 'BAD_CONFIG', e.message); }
     return send(res, 201, {
-      roomCode: room.code, hostToken: room.hostToken,
+      roomCode: room.code, hostToken: room.hostToken, seed: room.seed,
       title: room.title, config: room.config, lobby: room.lobbyInfo(),
     });
   }
@@ -213,6 +213,21 @@ async function route(req, res, url) {
     if (!requireHost(res, room, req, url)) return;
     try { return send(res, 200, room.start()); }
     catch (e) { return fail(res, 409, e.code || 'START_FAILED', e.message); }
+  }
+
+  // POST /api/rooms/:code/config — 시작 전 설정 변경 (방장)
+  if (tail === 'config' && method === 'POST') {
+    if (!requireHost(res, room, req, url)) return;
+    const body = await readBody(req);
+    try { return send(res, 200, room.reconfigure(body.config || body)); }
+    catch (e) { return fail(res, 409, e.code || 'RECONFIG_FAILED', e.message); }
+  }
+
+  // POST /api/rooms/:code/end — 조기 마감 (방장)
+  if (tail === 'end' && method === 'POST') {
+    if (!requireHost(res, room, req, url)) return;
+    try { return send(res, 200, room.forceEnd()); }
+    catch (e) { return fail(res, 409, e.code || 'END_FAILED', e.message); }
   }
 
   // GET /api/rooms/:code/stream — 실시간 스트림 (토큰 없으면 관전/현황판 모드)

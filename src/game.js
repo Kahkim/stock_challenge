@@ -577,8 +577,15 @@ class Game {
   }
 
   // ── 스냅샷 ────────────────────────────────────────────────────
-  snapshot(depthLevels) {
+  //
+  // 초당 2.5회 × 참가자 수만큼 나가므로 크기가 곧 대역폭이다.
+  // 순위표 50명 전체를 매번 실어 보내면 그것만으로 페이로드의 43%를 차지한다.
+  // 상위 몇 명만 싣고, 본인 순위는 playerView 의 rank 로 따로 알려준다.
+  snapshot(depthLevels, opts) {
     const lv = depthLevels || 10;
+    const o = opts || {};
+    const rankLimit = o.rankingLimit !== undefined ? o.rankingLimit : 20;
+    const tapeLimit = o.tapeLimit !== undefined ? o.tapeLimit : 20;
     return {
       phase: this.phase,
       tickNo: this.tickNo,
@@ -587,6 +594,10 @@ class Game {
       remainSec: Math.round(this.tradeRemainSec),
       playerCount: this.players.size,
       feesCollected: Math.round(this.feesCollected),
+      // 로비에서는 참가자가 속속 들어오는 걸 화면이 실시간으로 보여줘야 한다.
+      // 봇은 시작할 때 생기므로 이 단계에는 사람만 있다. 시작 뒤에는 싣지 않는다(크기).
+      players: this.phase === PHASE.LOBBY
+        ? [...this.players.values()].map(p => ({ id: p.id, name: p.name })) : undefined,
       humanCount: this.humans().length,
       config: {
         lotSize: this.cfg.lotSize, feeRate: this.cfg.feeRate,
@@ -605,7 +616,7 @@ class Game {
         ipoDemand: this.phase === PHASE.IPO
           ? s.ipoBids.reduce((a, b) => a + b.qty, 0) : undefined,
       })),
-      ranking: this.ranking().slice(0, 50),
+      ranking: this.ranking().slice(0, rankLimit),
       news: this.news.map(n => ({
         id: n.id, code: n.code, name: n.name, sign: n.sign, headline: n.headline,
         impactPct: Math.round(n.sign * n.impact * 1000) / 10,
@@ -613,7 +624,7 @@ class Game {
         lifeSec: Math.round(n.lifeTicks * this.cfg.tickMs / 1000),
       })),
       notices: this.notices.slice(-12),
-      tape: this.tape.slice(-40),
+      tape: this.tape.slice(-tapeLimit),
     };
   }
 
@@ -640,15 +651,31 @@ class Game {
     for (const s of this.stocks) {
       for (const o of s.book.openOrders(p.id)) openOrders.push({ ...o, name: s.name });
     }
+    // 종목별로 지금 낼 수 있는 최대 수량. 화면이 직접 계산하다 틀리면
+    // 참가자가 계속 "현금이 부족합니다" 를 맞게 된다(부하 테스트에서 거부의 83%가 이것이었다).
+    const lot = this.cfg.lotSize;
+    const tradable = this.stocks.map(s => {
+      const unit = s.last * (1 + this.cfg.feeRate);
+      const free = p.holdings[s.code] || 0;
+      return {
+        code: s.code, name: s.name, last: s.last,
+        maxBuyQty: unit > 0 ? Math.floor(p.cash / unit / lot) * lot : 0,
+        maxSellQty: Math.floor(free / lot) * lot,
+      };
+    });
+
+    const myRank = this.ranking().find(r => r.id === p.id) || null;
     const since = Number(sinceFillSeq) || 0;
     return {
       id: p.id, name: p.name, isBot: p.isBot,
+      rank: myRank ? myRank.rank : null,
+      rankTotal: this.ranking().length,
       cash: Math.round(p.cash), lockedCash: Math.round(locked.cash),
       nav: this.nav(p, locked),
       invested: this.cfg.seedMoney + p.salaryTotal,
       salaryTotal: p.salaryTotal,
       realized: Math.round(p.realized || 0),
-      holdings, openOrders,
+      holdings, openOrders, tradable,
       newFills: p.fills.filter(f => f.seq > since),
       fillSeq: p.fillSeq,
     };

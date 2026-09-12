@@ -44,8 +44,13 @@ function sanitizeConfig(raw = {}) {
   }
   if (mixSum <= 0) Object.assign(mix, DEFAULTS.botMix);
 
+  const seed = raw.seed === undefined || raw.seed === null || raw.seed === ''
+    ? undefined
+    : (Number.isFinite(Number(raw.seed)) ? (Number(raw.seed) >>> 0) : undefined);
+
   return {
     stockCodes: codes,
+    seed,
     seedMoney: Math.round(num(raw.seedMoney, DEFAULTS.seedMoney, 10_000, 1_000_000_000)),
     initialShares: Math.round(num(raw.initialShares, DEFAULTS.initialShares, 0, 100_000)),
     salaryAmount: Math.round(num(raw.salaryAmount, DEFAULTS.salaryAmount, 0, 1_000_000_000)),
@@ -80,7 +85,10 @@ class Room {
     this.title = String(title || '모의주식 챌린지').slice(0, 40);
     this.hostToken = token();
     this.config = config;
-    this.game = new Game(config, crypto.randomBytes(4).readUInt32BE(0));
+    // 시드를 지정하면 같은 게임이 그대로 재현된다. 리허설을 반복하거나
+    // 문제 상황을 다시 만들어 볼 때 쓴다. 지정하지 않으면 매번 다른 판이 된다.
+    this.seed = config.seed || crypto.randomBytes(4).readUInt32BE(0);
+    this.game = new Game(config, this.seed);
     this.tokens = new Map();       // playerToken -> playerId
     this.createdAt = Date.now();
     this.timer = null;
@@ -97,8 +105,55 @@ class Room {
 
   playerIdOf(playerToken) { return this.tokens.get(playerToken) || null; }
 
+  /**
+   * 시작 전 설정 변경. 참가자가 예상보다 적게(또는 많이) 왔을 때
+   * 봇 수나 진행 시간을 손볼 수 있어야 한다.
+   * 이미 입장한 참가자의 잔고는 새 시드머니로 다시 맞춘다.
+   */
+  reconfigure(rawConfig) {
+    if (this.game.phase !== PHASE.LOBBY) {
+      const e = new Error('게임이 시작된 뒤에는 설정을 바꿀 수 없습니다');
+      e.code = 'ALREADY_STARTED';
+      throw e;
+    }
+    const merged = sanitizeConfig(Object.assign({}, this.config, rawConfig));
+    const names = this.game.humans().map(p => p.name);
+    const tokenByName = new Map();
+    for (const [t, id] of this.tokens) {
+      const p = this.game.players.get(id);
+      if (p) tokenByName.set(p.name, t);
+    }
+    this.config = merged;
+    this.seed = merged.seed || this.seed;
+    this.game = new Game(merged, this.seed);
+    this.tokens = new Map();
+    for (const name of names) {
+      const p = this.game.addPlayer(name);
+      const t = tokenByName.get(name);
+      // 이미 나눠준 참가자 토큰을 그대로 유지해야 접속이 끊기지 않는다
+      this.tokens.set(t || token(), p.id);
+    }
+    this.lastActivity = Date.now();
+    return this.lobbyInfo();
+  }
+
+  /** 행사 운영상 조기 마감 */
+  forceEnd() {
+    if (this.game.phase === PHASE.LOBBY) {
+      const e = new Error('아직 시작하지 않은 게임입니다');
+      e.code = 'NOT_STARTED';
+      throw e;
+    }
+    if (this.game.phase !== PHASE.ENDED) this.game._end();
+    this.stopTimer();
+    return this.game.snapshot();
+  }
+
   start() {
     const snap = this.game.start();
+    // 테스트는 틱을 직접 돌려 검증한다. 방 타이머가 같이 돌면 HTTP 왕복 사이에
+    // 몇 틱이 지났는지가 매번 달라져(공유 난수까지 어긋난다) 결과가 재현되지 않는다.
+    if (process.env.NO_AUTO_TICK) return snap;
     const ms = this.config.tickMs;
     this.timer = setInterval(() => {
       try {
@@ -120,6 +175,7 @@ class Room {
     return {
       code: this.code,
       title: this.title,
+      seed: this.seed,
       phase: this.game.phase,
       players: this.game.humans().map(p => ({ id: p.id, name: p.name })),
       humanCount: this.game.humans().length,
