@@ -99,7 +99,7 @@ function toggle(on) {
 /* =======================================================================
    1) 방 만들기  — Room.dc.html
    ======================================================================= */
-const ROOM_H = 1240;
+const ROOM_H = 1150;
 
 const optionRow = (title, sub, on) => `<div style="display:flex;align-items:center;gap:12px;height:56px;">
         <div style="flex-grow:1;">
@@ -165,23 +165,23 @@ const roomBody = `<div style="width:390px;min-height:${ROOM_H}px;box-sizing:bord
     <div>
       ${label('규칙')}
       <div style="display:flex;flex-direction:column;background:${T.surf};border:1px solid ${T.line};border-radius:12px;padding:2px 14px;">
-        ${optionRow('공매도 허용', '없는 주식을 먼저 팔 수 있어요', false)}
-        <div style="height:1px;background:${T.line};"></div>
-        ${optionRow('순위 실시간 공개', '끄면 종료 후에만 공개돼요', true)}
-        <div style="height:1px;background:${T.line};"></div>
         ${optionRow('돌발 뉴스', '가격이 크게 튀는 이벤트 발생', true)}
       </div>
     </div>
 
     <div>
-      ${label('참가 인원')}
+      ${label('봇 트레이더')}
       <div style="height:56px;display:flex;align-items:center;gap:14px;padding:0 8px 0 16px;background:${T.surf};border:1px solid ${T.line};border-radius:12px;">
-        <div style="flex-grow:1;font-size:14px;font-weight:500;color:${T.text};">최대 인원</div>
+        <div style="flex-grow:1;font-size:14px;font-weight:500;color:${T.text};">봇 수</div>
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:${T.surf3};">${icoMinus(T.dim)}</div>
-          <div style="width:44px;text-align:center;font-size:18px;font-weight:700;" class="m">6</div>
+          <div style="width:44px;text-align:center;font-size:18px;font-weight:700;" class="m">8</div>
           <div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:10px;background:${T.surf3};">${icoPlus(T.text)}</div>
         </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:9px;">
+        ${icoInfo(T.dim2)}
+        <div style="font-size:11px;color:${T.dim2};">호가를 채우고 사람 주문의 반대편에서 거래해요 · 0~20</div>
       </div>
     </div>
 
@@ -631,7 +631,7 @@ const canvas = {
     { file: 'Stock.dc.html', title: '3 · 개별 종목', x: 1020, y: 0, w: 390, h: STOCK_H },
   ],
   annotations: [
-    { id: 'note-room', x: 0, y: -190, w: 390, text: '한 판 5~10분 · 내부 시뮬레이션 거래소 전제.\n방장이 종목 구성과 변동성을 고르고, 초대코드로 2~8명이 들어온다.' },
+    { id: 'note-room', x: 0, y: -190, w: 390, text: '한 판 5~10분 · 내부 시뮬레이션 거래소 전제.\n방장이 종목·변동성·봇 수를 정하고, 사람은 초대코드로 들어온다.' },
     { id: 'note-market', x: 510, y: -190, w: 390, text: '갱신 주기 제안: 종목 등락 1초 / 자산 순위 2초.\n5~10분짜리 판에서 10초는 너무 느리다 — 한 판에 30~60번밖에 안 움직인다.' },
     { id: 'note-stock', x: 1020, y: -190, w: 390, text: '호가·체결은 주기 갱신이 아니라 이벤트 푸시(250ms 스로틀).\n차트는 1초 틱 수집 + 5초봉 집계가 기본, 칩으로 1초/30초 전환.' },
   ],
