@@ -169,12 +169,34 @@ PORT=8080 node server.js
 }
 ```
 
-### `POST /api/rooms/{code}/join` — 참가
-요청 `{ "name": "앨리스" }` (이름은 12자로 잘립니다. 비우면 자동 생성)
-```json
-{ "roomCode": "SC6NSN", "playerId": "p1_6ze7", "playerToken": "...", "name": "앨리스" }
+### `POST /api/rooms/{code}/join` — 참가 · 재접속 복구
+
+```jsonc
+{ "name": "앨리스", "deviceId": "브라우저에 보관하는 임의 문자열" }
 ```
-`phase` 가 `lobby` 가 아니면 **409 ALREADY_STARTED**. 게임 시작 후 난입은 막혀 있습니다.
+```json
+{ "roomCode": "SC6NSN", "playerId": "p1_6ze7", "playerToken": "...", "name": "앨리스", "resumed": false }
+```
+
+**`deviceId` 를 반드시 같이 보내세요.** 50명이 모이면 새로고침하거나 잠깐 통신이 끊기는 사람이
+반드시 나옵니다. `deviceId` 가 있으면 같은 기기로 다시 들어올 때 **원래 참가자로 복귀**하고
+`playerToken` 도 그대로 돌아옵니다 (`resumed: true`). 이때 `name` 은 무시되고 원래 이름이 유지됩니다.
+`crypto.randomUUID()` 를 `localStorage` 에 한 번 저장해 두고 계속 쓰면 됩니다.
+
+- **복귀는 게임이 시작된 뒤에도 됩니다.** 막아야 하는 건 난입이지 복귀가 아닙니다.
+- 처음 보는 `deviceId` 로 시작된 방에 들어오면 **409 ALREADY_STARTED**.
+- 이름은 제어문자·줄바꿈·폭 없는 공백이 제거되고, 연속 공백은 하나로 줄고, 12자로 잘립니다.
+  비우면 `참가자N` 이 됩니다. **같은 이름이 이미 있으면 뒤에 번호가 붙습니다**(`김철수2`).
+  화면에 표시할 이름은 반드시 응답의 `name` 을 쓰세요.
+
+### `POST /api/rooms/{code}/resume` — 보관한 토큰이 아직 유효한지 확인
+
+```jsonc
+{ "playerToken": "..." }
+```
+헤더 `X-Player-Token` 으로 보내도 됩니다. 유효하면 `join` 과 같은 형식으로 돌아오고,
+아니면 **401 INVALID_TOKEN**. 화면을 열 때 저장해 둔 토큰을 이걸로 검사한 뒤
+실패하면 입장 화면으로 보내면 됩니다.
 
 ### `POST /api/rooms/{code}/config` — 시작 전 설정 변경 *(방장)*
 `phase === "lobby"` 일 때만. 사람이 예상보다 적게(또는 많이) 왔을 때 봇 수나 진행 시간을 손볼 수 있습니다.
@@ -188,10 +210,48 @@ PORT=8080 node server.js
 ### `POST /api/rooms/{code}/start` — 시작 *(방장)*
 헤더 `X-Host-Token` 필요. 응답은 아래 **Snapshot** 과 동일합니다.
 
+### `POST /api/rooms/{code}/pause` · `/resume-game` — 일시정지와 재개 *(방장)*
+
+틱을 멈추면 **게임 시간도 같이 멈춥니다** — 남은 시간이 틱 수로 계산되기 때문에
+별도 보정이 필요 없습니다. 응답은 **Snapshot** 이고 `paused` 가 바뀝니다.
+
+정지 중에도 SSE 는 계속 흐르므로 화면은 `snapshot.paused` 를 보고 오버레이를 띄우면 됩니다.
+정지 중 주문은 접수는 되지만 시장이 움직이지 않으니, 화면에서 주문 패널을 잠그는 걸 권합니다.
+
+로비 단계면 `409 NOT_STARTED`, 이미 마감됐으면 `409 ALREADY_ENDED`,
+정지 상태가 아닌데 재개하면 `409 NOT_PAUSED`.
+
+### `POST /api/rooms/{code}/kick` — 참가자 내보내기 *(방장)*
+
+```jsonc
+{ "playerId": "p3_a9k2" }
+```
+
+**삭제가 아니라 차단입니다.** 참가자를 지우면 그 사람이 들고 있던 주식이 증발해
+총량 보존이 깨집니다. 미체결 주문만 걷어내 예약분을 돌려주고, 순위와 인원에서 제외하며,
+토큰을 무효화합니다. 보유 주식은 시장에 그대로 남습니다.
+
+내보내진 참가자는 이후 모든 요청에서 **401 INVALID_TOKEN** 을 받습니다.
+봇은 내보낼 수 없습니다(`CANNOT_KICK_BOT`).
+
 ### `POST /api/rooms/{code}/end` — 조기 마감 *(방장)*
 남은 시간과 무관하게 즉시 마감합니다. 행사 진행상 끊어야 할 때 쓰세요.
 미체결 주문은 전부 취소되고 예약분이 반환됩니다. 응답은 마감 시점의 **Snapshot** 입니다.
 아직 시작하지 않았으면 `409 NOT_STARTED`.
+
+### `GET /api/rooms/{code}/result.csv?type=ranking|stocks` — 시상·정산용 내려받기
+
+`Content-Disposition: attachment` 로 내려오므로 `<a href download>` 로 바로 연결하면 됩니다.
+**UTF-8 BOM** 이 붙어 있어 엑셀에서 한글이 깨지지 않습니다.
+줄바꿈은 CRLF, 쉼표와 따옴표는 이스케이프됩니다.
+
+```
+순위,이름,구분,총자산,투입액,손익,수익률(%)
+1,불꽃투자,봇,4120000,2500000,1620000,64.80
+2,"김, ""철수""",사람,3688125,3000000,688125,22.94
+```
+
+`type=stocks` 는 `종목코드,종목명,시초가,종가,적정가,고가,저가,거래량,발행주식수,등락률(%)` 입니다.
 
 ### `POST /api/rooms/{code}/ipo-bids` — 개장 공모 청약 *(참가자)*
 `phase === "ipo"` 일 때만. 한 종목에 여러 번 낼 수 있습니다.
@@ -288,6 +348,8 @@ es.addEventListener('state', (e) => {
   "remainSec": 585,              // 정규장 남은 시간 — 화면 카운트다운
   "playerCount": 32,             // 봇 포함
   "humanCount": 2,
+  "paused": false,               // 방장이 일시정지한 상태
+  "connections": 47,             // 지금 SSE 로 붙어 있는 화면 수 (관전 포함)
   "players": [                   // phase === "lobby" 일 때만. 로비 화면의 참가자 명단
     { "id": "p1_6ze7", "name": "앨리스" }
   ],
@@ -391,7 +453,13 @@ es.addEventListener('state', (e) => {
 | `ALREADY_STARTED` | 409 | 시작된 방에 참가 시도 | "이미 시작된 게임입니다" |
 | `NO_PLAYERS` | 409 | 참가자 0명인데 시작 | 시작 버튼 비활성화 |
 | `NOT_HOST` | 403 | 방장 토큰 불일치 | — |
-| `NOT_STARTED` | 409 | 시작 전에 조기 마감 시도 | — |
+| `NOT_STARTED` | 409 | 시작 전에 일시정지·조기마감 시도 | — |
+| `ALREADY_ENDED` | 409 | 마감된 게임을 일시정지 | — |
+| `NOT_PAUSED` | 409 | 정지 상태가 아닌데 재개 | — |
+| `CANNOT_KICK_BOT` | 400 | 봇을 내보내려 함 | — |
+| `KICKED` | 400 | 내보내진 참가자의 주문 | 입장 화면으로 돌려보내기 |
+| `RATE_LIMITED` | **429** | 요청이 너무 잦음 | `Retry-After` 헤더만큼 기다렸다 재시도 |
+| `TOO_MANY_ROOMS` | 503 | 서버의 방 수 상한 초과 | — |
 | `INVALID_TOKEN` | 401 | 참가자 토큰 불일치 | 재입장 유도 |
 | `NOT_TRADING` | 400 | 거래 시간이 아님 | 주문 UI 잠그기 |
 | `NOT_IPO` | 400 | 공모 시간이 아님 | 청약 UI 잠그기 |
@@ -403,6 +471,46 @@ es.addEventListener('state', (e) => {
 | `NO_COUNTERPARTY` | 400 | 시장가인데 반대 호가 없음 | **자주 발생.** "지정가로 주문하세요" 안내 |
 | `ORDER_GONE` | 400 | 이미 체결·취소된 주문 | 주문 목록 새로고침 |
 | `NOT_OWNER` | 400 | 남의 주문 취소 시도 | — |
+
+---
+
+## 6.5 요청 제한
+
+정상 플레이는 걸리지 않는 수준이지만, 재시도 로직을 넣을 때 알아두셔야 합니다.
+
+| 대상 | 기준 | 버스트 | 지속 속도 |
+|---|---|---|---|
+| 주문 · 청약 · 취소 | **참가자 토큰** | 25건 | 초당 12건 |
+| 전체 API 요청 | IP | 1200건 | 초당 600건 |
+| 방 만들기 | IP | 40건 | 시간당 72개 |
+
+IP 기준이 느슨한 건 **행사장 WiFi 에서는 50명이 전부 같은 공인 IP 를 쓰기 때문**입니다.
+실질적인 보호선은 참가자 토큰 기준입니다.
+
+걸리면 **429** 와 함께 `Retry-After`(초) 헤더가 옵니다.
+화면에서 연타를 막고 있다면 사실상 만날 일이 없습니다.
+
+환경변수로 조절합니다: `RL_ORDER_BURST` `RL_ORDER_RATE` `RL_IP_BURST` `RL_IP_RATE`
+`RL_CREATE_BURST` `RL_CREATE_RATE` `MAX_ROOMS`.
+
+---
+
+## 6.6 서버가 죽어도 게임은 이어집니다
+
+방 상태를 주기적으로 디스크에 저장하고, 재시작하면 그 지점부터 이어갑니다.
+호가창·잔고·보유주식·토큰·기기 매핑까지 전부 복원되므로 **참가자는 새로고침만 하면 됩니다.**
+
+| 환경변수 | 기본값 | |
+|---|---|---|
+| `PERSIST_DIR` | `./.data` | 저장 위치. 빈 문자열이면 저장하지 않음 |
+| `PERSIST_MS` | `10000` | 저장 주기 |
+
+`SIGINT`/`SIGTERM` 을 받으면 마지막으로 한 번 더 저장하고 종료합니다.
+파일은 임시 파일에 쓴 뒤 rename 하므로 쓰는 도중에 죽어도 반쯤 쓰인 파일이 남지 않고,
+깨진 파일이 하나 있어도 `.broken` 으로 치우고 나머지는 정상 복구합니다.
+
+> 복원 후에는 난수가 시드에서 새로 시작하므로 **그 뒤의 전개는 원래와 달라집니다.**
+> 참가자의 자산과 시장 상태는 그대로 이어집니다.
 
 ---
 
@@ -463,5 +571,8 @@ es.addEventListener('state', (e) => {
 | 내 순위 | `me.rank` / `me.rankTotal` |
 | 수량 입력 상한 | `me.tradable[].maxBuyQty` / `maxSellQty` |
 | 로비 참가자 명단 | `snapshot.players` (로비 단계에서만) |
+| 일시정지 오버레이 | `snapshot.paused` |
+| 접속 중인 인원 | `snapshot.connections` |
+| 결과 내려받기 | `GET /result.csv` 를 `<a download>` 로 연결 |
 | 공지 배너 | `snapshot.notices[]` |
 | 돌발뉴스 배너 | `snapshot.news[]` (활성) + `notices[].kind === "news-up" / "news-down"` |

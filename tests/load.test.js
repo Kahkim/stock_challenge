@@ -145,7 +145,7 @@ async function main() {
   console.log(`    응답 지연(ms)  중앙 ${pct(orderLat, 0.5)} / p95 ${pct(orderLat, 0.95)} / p99 ${pct(orderLat, 0.99)} / 최대 ${Math.max(...orderLat, 0)}`);
 
   console.log('\n  [서버]');
-  console.log(`    놓친 틱 비율  중앙 ${pct(tickLag, 0.5).toFixed(1)}% / 최대 ${Math.max(...tickLag).toFixed(1)}%`);
+  console.log(`    놓친 틱 비율  중앙 ${pct(tickLag, 0.5).toFixed(1)}% / p95 ${pct(tickLag, 0.95).toFixed(1)}% / 최대 ${Math.max(...tickLag).toFixed(1)}%`);
   console.log(`    CPU ${((cpu.user + cpu.system) / 1000 / DURATION_SEC / 10).toFixed(0)}% (1코어 기준)`);
   console.log(`    메모리 ${MB(m0.heapUsed)}MB → ${MB(m1.heapUsed)}MB (RSS ${MB(m1.rss)}MB)`);
   console.log(`    총 체결 ${g.stocks.reduce((a, s) => a + s.volume, 0).toLocaleString()}주`);
@@ -155,7 +155,9 @@ async function main() {
   ok(stats.every(s => s.events > 0), '모든 참가자가 실시간 갱신을 받는다', '일부 연결이 이벤트를 못 받았다');
   ok(pct(orderLat, 0.95) < 300, `주문 응답이 빠르다 (p95 ${pct(orderLat, 0.95)}ms)`, `주문 p95 ${pct(orderLat, 0.95)}ms — 체감 지연이 생긴다`);
   ok(pct(allGaps, 0.95) < 1200, `화면 갱신이 끊기지 않는다 (p95 ${pct(allGaps, 0.95)}ms)`, `갱신 간격 p95 ${pct(allGaps, 0.95)}ms — 화면이 멈춘 것처럼 보인다`);
-  ok(Math.max(...tickLag) < 25, '게임 틱이 밀리지 않는다', `틱을 최대 ${Math.max(...tickLag).toFixed(0)}% 놓쳤다`);
+  // 1초 창으로 재므로 틱 하나가 한 번 늦으면 그 창은 25% 가 된다. 최대값이 아니라 p95 로 본다.
+  ok(pct(tickLag, 0.95) < 25, '게임 틱이 밀리지 않는다',
+     `틱 지연 p95 ${pct(tickLag, 0.95).toFixed(0)}% — 화면이 주기적으로 끊긴다`);
   ok(orderFail === 0, '주문 요청이 유실되지 않는다', `${orderFail}건 유실`);
   console.log('');
 

@@ -16,6 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const { RoomStore } = require('./src/rooms');
 const { Limiter } = require('./src/ratelimit');
+const { Room } = require('./src/rooms');
+const persist = require('./src/persist');
 const { STOCK_POOL, DEFAULTS, tickSize } = require('./src/config');
 const { PHASE } = require('./src/game');
 
@@ -28,6 +30,42 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const store = new RoomStore();
 setInterval(() => store.sweep(), 10 * 60 * 1000).unref();
 
+// ── 영속성 ──────────────────────────────────────────────────────
+// 행사 중 서버가 죽어도 진행 중인 게임을 이어갈 수 있게 주기적으로 저장한다.
+// PERSIST_DIR 를 빈 문자열로 두면 저장하지 않는다(테스트용).
+const PERSIST_DIR = process.env.PERSIST_DIR === '' ? null
+  : (process.env.PERSIST_DIR || path.join(__dirname, '.data'));
+const PERSIST_MS = Number(process.env.PERSIST_MS) || 10000;
+
+if (PERSIST_DIR) {
+  const restored = persist.loadAll(store, PERSIST_DIR, Room);
+  if (restored) console.log(`저장된 방 ${restored}개를 복구했습니다`);
+  // 비동기로 저장한다. 동기 I/O 는 이벤트 루프를 막아 게임 틱과 SSE 전송이 그만큼 밀린다.
+  let saving = false;
+  setInterval(async () => {
+    if (saving) return;                      // 저장이 겹치지 않게
+    saving = true;
+    try { await persist.saveAllAsync(store, PERSIST_DIR); }
+    catch (e) { console.error('[persist]', e.message); }
+    finally { saving = false; }
+  }, PERSIST_MS).unref();
+}
+
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  if (PERSIST_DIR) {
+    const n = persist.saveAll(store, PERSIST_DIR);
+    console.log(`\n${signal}: 방 ${n}개를 저장하고 종료합니다`);
+  }
+  for (const r of store.rooms.values()) r.stopTimer();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 2000).unref();
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
 // ── 요청 제한 ───────────────────────────────────────────────────
 // 참가자 토큰 기준이 실질적인 보호선이다. 사람이 낼 수 있는 속도를 훨씬 웃도는
 // 값이라 정상 플레이는 절대 걸리지 않고, 폭주하는 스크립트만 막는다.
@@ -36,8 +74,9 @@ const LIMITS = {
                      Number(process.env.RL_ORDER_RATE) || 12),     // 참가자당 주문
   ip:    new Limiter(Number(process.env.RL_IP_BURST) || 1200,
                      Number(process.env.RL_IP_RATE) || 600),        // IP당 전체 요청 (50명이 한 IP를 공유한다)
-  create: new Limiter(Number(process.env.RL_CREATE_BURST) || 10,
-                      Number(process.env.RL_CREATE_RATE) || 0.01),  // IP당 방 생성 — 시간당 36개
+  // IP당 방 생성. 리허설하며 방을 여러 개 만드는 건 정상이므로 버스트를 넉넉히 둔다.
+  create: new Limiter(Number(process.env.RL_CREATE_BURST) || 40,
+                      Number(process.env.RL_CREATE_RATE) || 0.02),  // 회복 시간당 72개
 };
 setInterval(() => { for (const l of Object.values(LIMITS)) l.sweep(); }, 60 * 1000).unref();
 
@@ -190,7 +229,10 @@ async function route(req, res, url) {
   const method = req.method.toUpperCase();
 
   if (seg[1] === 'health') {
-    return send(res, 200, { ok: true, rooms: store.rooms.size, uptimeSec: Math.round(process.uptime()) });
+    return send(res, 200, {
+      ok: true, rooms: store.rooms.size, uptimeSec: Math.round(process.uptime()),
+      persist: PERSIST_DIR ? { dir: PERSIST_DIR, everyMs: PERSIST_MS } : null,
+    });
   }
 
   // 방 만들기 화면이 필요로 하는 메타데이터
@@ -363,6 +405,41 @@ async function route(req, res, url) {
     return send(res, 200, { stocks: rows });
   }
 
+  // GET /api/rooms/:code/result.csv?type=ranking|stocks — 시상·정산용 내려받기
+  if (tail === 'result.csv' && method === 'GET') {
+    const type = url.searchParams.get('type') || 'ranking';
+    const q = (v) => {
+      const t = String(v == null ? '' : v);
+      return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    };
+    const rows = [];
+    if (type === 'stocks') {
+      rows.push(['종목코드', '종목명', '시초가', '종가', '적정가', '고가', '저가', '거래량', '발행주식수', '등락률(%)']);
+      for (const st of g.stocks) {
+        rows.push([st.code, st.name, st.open, st.last, Math.round(st.fair), st.high, st.low,
+                   st.volume, st.issued, (st.open ? (st.last / st.open - 1) * 100 : 0).toFixed(2)]);
+      }
+    } else {
+      rows.push(['순위', '이름', '구분', '총자산', '투입액', '손익', '수익률(%)']);
+      for (const row of g.ranking(true)) {
+        const p = g.players.get(row.id);
+        const invested = g.cfg.seedMoney + (p ? p.salaryTotal : 0);
+        rows.push([row.rank, row.name, row.isBot ? '봇' : '사람', row.nav, invested,
+                   row.nav - invested, row.pnlPct.toFixed(2)]);
+      }
+    }
+    // 엑셀에서 한글이 깨지지 않도록 BOM 을 붙인다
+    const csv = '\uFEFF' + rows.map(r2 => r2.map(q).join(',')).join('\r\n') + '\r\n';
+    const buf = Buffer.from(csv, 'utf8');
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Length': buf.length,
+      'Content-Disposition': 'attachment; filename="' + room.code + '-' + type + '.csv"',
+      'Cache-Control': 'no-store',
+    });
+    return res.end(buf);
+  }
+
   // GET /api/rooms/:code/result — 최종 결과
   if (tail === 'result' && method === 'GET') {
     return send(res, 200, {
@@ -412,4 +489,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, store, PHASE, LIMITS };
+module.exports = { server, store, PHASE, LIMITS, persist, PERSIST_DIR };

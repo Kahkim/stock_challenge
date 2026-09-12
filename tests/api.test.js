@@ -7,6 +7,8 @@ const assert = require('assert');
 // 방이 스스로 틱을 돌리지 않게 해서, 진행을 테스트가 전적으로 통제하도록 만든다.
 // server 를 require 하기 전에 켜야 한다.
 process.env.NO_AUTO_TICK = '1';
+// 단위 테스트가 .data 를 더럽히지 않게 한다(영속성은 전용 테스트에서 임시 폴더로 검증).
+process.env.PERSIST_DIR = '';
 const { server, store } = require('../server');
 
 let pass = 0, fail = 0;
@@ -17,6 +19,10 @@ async function test(name, fn) {
 }
 
 let BASE;
+// 테스트는 방을 여러 개 만든다. 요청 제한 때문에 뒤쪽 테스트가 엉뚱하게 실패하지 않도록
+// 매 실행마다 제한을 초기화한다(제한 자체는 전용 테스트에서 따로 검증한다).
+const { LIMITS } = require('../server');
+for (const l of Object.values(LIMITS)) l.reset();
 const J = async (method, p, body, headers) => {
   const r = await fetch(BASE + p, {
     method,
@@ -410,7 +416,6 @@ async function main() {
   });
 
   await test('주문을 폭주시키면 요청 제한에 걸린다', async () => {
-    const { LIMITS } = require('../server');
     LIMITS.order.reset();
     const body = { code: 'SNU', side: 'buy', price: 10, qty: 10 };   // 체결 안 되는 저가 주문
     let limitedCount = 0, first429 = -1;
@@ -482,6 +487,127 @@ async function main() {
     assert.strictEqual(nope.status, 403);
     const bot = await J('POST', `/api/rooms/${roomCode}/kick`, { playerId: 'b1' }, { 'X-Host-Token': hostToken });
     assert.strictEqual(bot.data.error.code, 'CANNOT_KICK_BOT');
+  });
+
+
+  await test('서버가 죽어도 저장된 방을 복구해 이어갈 수 있다', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { Room } = require('../src/rooms');
+    const { RoomStore } = require('../src/rooms');
+    const persist = require('../src/persist');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-persist-'));
+
+    const mk = await J('POST', '/api/rooms', {
+      config: { stockCodes: ['SNU', 'YON', 'KOR'], botCount: 12, ipoSec: 2,
+                durationMin: 5, tickMs: 100, seed: 5150 },
+    });
+    const c = mk.data.roomCode;
+    const p1 = await J('POST', `/api/rooms/${c}/join`, { name: '복구맨', deviceId: 'rec-1' });
+    await J('POST', `/api/rooms/${c}/start`, {}, { 'X-Host-Token': mk.data.hostToken });
+    await J('POST', `/api/rooms/${c}/ipo-bids`, { code: 'SNU', price: 1800, qty: 200 },
+            { 'X-Player-Token': p1.data.playerToken });
+    fastForward(c, 300);
+
+    const g0 = store.get(c).game;
+    const navBefore = g0.nav(g0.players.get(p1.data.playerId), g0._lockedMap().get(p1.data.playerId));
+    const tickBefore = g0.tickNo;
+    const sharesBefore = g0.stocks.map(s => s.issued);
+
+    assert.strictEqual(persist.saveAll(store, dir), store.rooms.size);
+
+    // 다른 프로세스인 척: 새 저장소에 복구한다
+    const store2 = new RoomStore();
+    assert.ok(persist.loadAll(store2, dir, Room) >= 1);
+    const r2 = store2.get(c);
+    assert.ok(r2, '방이 복구되지 않았다');
+    const g2 = r2.game;
+    assert.strictEqual(g2.tickNo, tickBefore);
+    assert.strictEqual(g2.phase, g0.phase);
+    const navAfter = g2.nav(g2.players.get(p1.data.playerId), g2._lockedMap().get(p1.data.playerId));
+    assert.ok(Math.abs(navBefore - navAfter) < 1, `자산 불일치 ${navBefore} != ${navAfter}`);
+    g2.stocks.forEach((s, i) => assert.strictEqual(s.issued, sharesBefore[i]));
+    assert.ok(r2.playerIdOf(p1.data.playerToken), '복구 후 참가자 토큰이 죽었다');
+    assert.strictEqual(r2.hostToken, mk.data.hostToken, '복구 후 방장 토큰이 바뀌었다');
+    assert.strictEqual(r2.join('아무개', 'rec-1').resumed, true, '복구 후 기기 복귀가 안 된다');
+
+    // 복구한 판을 계속 돌려도 주식 총량이 유지된다
+    for (let i = 0; i < 200; i++) g2.tick();
+    for (const s of g2.stocks) {
+      let t = 0;
+      for (const p of g2.players.values()) t += (p.holdings[s.code] || 0);
+      for (const o of s.book.asks) t += o.qty;
+      assert.strictEqual(t, s.issued, `${s.name} 복구 후 진행 중 총량이 깨졌다`);
+    }
+    for (const r of store2.rooms.values()) r.stopTimer();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  await test('깨진 저장 파일이 있어도 나머지는 복구된다', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { Room, RoomStore } = require('../src/rooms');
+    const persist = require('../src/persist');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-broken-'));
+    persist.saveAll(store, dir);
+    fs.writeFileSync(path.join(dir, 'ZZZZZZ.json'), '{not json at all');
+    const store2 = new RoomStore();
+    const n = persist.loadAll(store2, dir, Room);
+    assert.ok(n >= 1, '깨진 파일 하나 때문에 전부 실패했다');
+    assert.ok(fs.existsSync(path.join(dir, 'ZZZZZZ.json.broken')), '깨진 파일이 격리되지 않았다');
+    for (const r of store2.rooms.values()) r.stopTimer();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  await test('이름의 제어문자가 제거되고 중복 이름은 구분된다', async () => {
+    const mk = await J('POST', '/api/rooms', {
+      config: { stockCodes: ['SNU', 'YON'], botCount: 2, ipoSec: 1, durationMin: 2, tickMs: 100, seed: 31 },
+    });
+    const c = mk.data.roomCode;
+    const NUL = String.fromCharCode(0), LF = String.fromCharCode(10);
+    const a = await J('POST', `/api/rooms/${c}/join`, { name: '김' + NUL + '철수' + LF });
+    assert.strictEqual(a.data.name, '김철수');
+    const b = await J('POST', `/api/rooms/${c}/join`, { name: '김철수' });
+    assert.strictEqual(b.data.name, '김철수2', '중복 이름이 구분되지 않았다');
+    const blank = await J('POST', `/api/rooms/${c}/join`, { name: '   ' });
+    assert.ok(blank.data.name.startsWith('참가자'));
+    const longName = await J('POST', `/api/rooms/${c}/join`, { name: '가나다라마바사아자차카타파하' });
+    assert.strictEqual(longName.data.name.length, 12);
+  });
+
+  await test('결과를 CSV 로 내려받을 수 있다', async () => {
+    const r = await fetch(`${BASE}/api/rooms/${roomCode}/result.csv`);
+    assert.strictEqual(r.headers.get('content-type').split(';')[0], 'text/csv');
+    assert.ok(/attachment; filename=/.test(r.headers.get('content-disposition')));
+    const buf = Buffer.from(await r.arrayBuffer());
+    // 엑셀이 한글을 깨뜨리지 않도록 UTF-8 BOM 이 붙어 있어야 한다
+    assert.ok(buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF, 'UTF-8 BOM 이 없다');
+    const text = buf.toString('utf8').replace(/^\uFEFF/, '');
+    assert.ok(text.includes('\r\n'), 'CSV 는 CRLF 여야 한다');
+    const lines = text.trim().split('\r\n');
+    assert.strictEqual(lines[0], '순위,이름,구분,총자산,투입액,손익,수익률(%)');
+    assert.ok(lines.length >= 2);
+
+    const st = await fetch(`${BASE}/api/rooms/${roomCode}/result.csv?type=stocks`);
+    const stText = Buffer.from(await st.arrayBuffer()).toString('utf8').replace(/^\uFEFF/, '');
+    assert.ok(stText.startsWith('종목코드,종목명,'));
+    assert.strictEqual(stText.trim().split('\r\n').length, 5, '헤더 + 종목 4개');
+  });
+
+  await test('방 만들기를 폭주시키면 제한에 걸린다', async () => {
+    LIMITS.create.reset();
+    const body = { config: { stockCodes: ['SNU', 'YON'], botCount: 0, durationMin: 1 } };
+    let ok = 0, blocked = 0;
+    for (let i = 0; i < 60; i++) {
+      const r = await J('POST', '/api/rooms', body);
+      if (r.status === 201) { ok++; store.rooms.delete(r.data.roomCode); }
+      else if (r.status === 429) blocked++;
+    }
+    assert.ok(blocked > 0, '60회 연속 방 생성인데 제한이 안 걸렸다');
+    assert.ok(ok >= 30, `${ok}개 만들고 막혔다 — 리허설도 못 한다`);
+    LIMITS.create.reset();
   });
 
   await test('마감 후에는 주문이 거부된다', async () => {

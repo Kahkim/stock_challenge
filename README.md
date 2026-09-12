@@ -7,12 +7,38 @@
 서버와의 계약은 [`docs/API.md`](docs/API.md) 에 전부 정리돼 있습니다.
 
 ```bash
-node server.js            # http://localhost:3000
-npm test                  # 엔진 21 + API 23 = 44개 테스트
-node tools/balance.js     # 설정을 바꾼 뒤 밸런스가 깨지지 않았는지 측정
+node server.js               # http://localhost:3000
+npm test                     # 엔진 27 + API 42 = 69개
+node tests/load.test.js 50   # 사람 50명 동시접속 부하 테스트
+node tools/balance.js        # 설정을 바꾼 뒤 밸런스가 깨지지 않았는지 측정
 ```
 
 외부 의존성이 없습니다. Node 18 이상이면 그대로 돌아갑니다.
+
+## 행사 운영에 필요한 것들
+
+| | |
+|---|---|
+| **재접속 복구** | `join` 에 `deviceId` 를 같이 보내면 새로고침해도 원래 참가자로 복귀합니다. 게임이 시작된 뒤에도 복귀는 되고 난입만 막힙니다 |
+| **영속성** | 방 상태를 10초마다 저장합니다. 서버가 죽어도 재시작하면 그 지점부터 이어갑니다 (`PERSIST_DIR`) |
+| **일시정지** | `POST /pause` · `/resume-game`. 틱을 멈추면 게임 시간도 같이 멈춥니다 |
+| **참가자 내보내기** | `POST /kick`. 삭제가 아니라 차단입니다 — 지우면 그 사람 주식이 증발해 총량 보존이 깨집니다 |
+| **시작 전 설정 변경** | `POST /config`. 사람이 예상보다 적게/많이 왔을 때. 참가자 토큰은 유지됩니다 |
+| **결과 내려받기** | `GET /result.csv` (UTF-8 BOM, 엑셀에서 한글 안 깨짐) |
+| **요청 제한** | 참가자 토큰 기준 초당 12건. 행사장 WiFi 는 50명이 한 IP 를 쓰므로 IP 기준은 느슨합니다 |
+| **판 재현** | `config.seed` 를 고정하면 같은 게임이 그대로 재현됩니다. 리허설용 |
+
+## 성능
+
+사람 50명이 SSE 로 붙은 채 계속 주문을 내는 상황을 45초 실주행한 결과입니다
+(`node tests/load.test.js 50`).
+
+| | |
+|---|---|
+| 주문 응답 지연 | 중앙 1ms / p95 2ms |
+| 화면 갱신 간격 | 중앙 400ms / p95 402ms (설정 400ms) |
+| 놓친 틱 | 중앙 0.0% / p95 0.1% |
+| CPU | 9% (1코어 기준) · 메모리 RSS 142MB |
 
 ---
 
@@ -78,15 +104,21 @@ node tools/balance.js     # 설정을 바꾼 뒤 밸런스가 깨지지 않았�
 ## 구조
 
 ```
-server.js            HTTP + SSE. 라우팅과 인증만 담당
+server.js            HTTP + SSE. 라우팅과 인증, 요청 제한
 src/config.js        모든 기본값과 종목 풀
 src/orderbook.js     연속경쟁매매 오더북 (가격 우선 → 시간 우선)
-src/game.js          게임 엔진 — 공모, 체결 정산, 월급, 증자, 인플레이션, 순위
+src/game.js          게임 엔진 — 공모, 체결 정산, 월급, 증자, 인플레, 뉴스, 순위, 직렬화
 src/bots.js          NPC 참가자 의사결정
-src/rooms.js         방 관리, 참가코드, 설정값 검증
-tests/               엔진 테스트 21개, API 테스트 23개
+src/news.js          돌발뉴스 생성과 봇 동조
+src/rooms.js         방 관리, 참가코드, 재접속, 설정값 검증
+src/persist.js       방 상태 저장과 복구
+src/ratelimit.js     토큰 버킷 요청 제한
+tests/engine.test.js 엔진 27개
+tests/api.test.js    API 42개
+tests/load.test.js   50명 동시접속 부하
 tools/balance.js     밸런스 측정 도구
 docs/API.md          화면 개발용 API 전체 명세
+docs/HANDOFF-UI.md   화면 세션에 보내는 변경 인계
 ```
 
 ## 밸런스에 관한 기록

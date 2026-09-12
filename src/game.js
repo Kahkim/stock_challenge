@@ -1,7 +1,7 @@
 'use strict';
 
 const { STOCK_POOL, DEFAULTS, roundToTick } = require('./config');
-const { OrderBook } = require('./orderbook');
+const { OrderBook, Order, bumpSeq } = require('./orderbook');
 const Bots = require('./bots');
 const News = require('./news');
 
@@ -99,10 +99,37 @@ class Game {
     return p;
   }
 
+  /** 방 제목도 같은 방식으로 다듬는다 */
+  static cleanTitle(raw) {
+    const s = String(raw == null ? '' : raw)
+      .replace(/[\u0000-\u001F\u007F\u200B-\u200F\u2028\u2029\uFEFF]/g, '')
+      .replace(/\s+/g, ' ').trim().slice(0, 40);
+    return s || '모의주식 챌린지';
+  }
+
+  /**
+   * 이름을 다듬는다. 제어문자와 줄바꿈, 폭 없는 공백을 걷어내고 연속 공백을 하나로 줄인다.
+   * 화면이 어떻게 그리든 서버가 이상한 문자열을 보관하지 않게 한다.
+   */
+  static cleanName(raw, fallback) {
+    const s = String(raw == null ? '' : raw)
+      .replace(/[\u0000-\u001F\u007F\u200B-\u200F\u2028\u2029\uFEFF]/g, '')
+      .replace(/\s+/g, ' ').trim().slice(0, 12);
+    return s || fallback;
+  }
+
   addPlayer(name) {
     if (this.phase !== PHASE.LOBBY) throw err('ALREADY_STARTED', '이미 시작된 게임입니다');
     const id = 'p' + (this.players.size + 1) + '_' + Math.floor(this.rnd() * 1e6).toString(36);
-    const clean = String(name || '').trim().slice(0, 12) || `참가자${this.players.size + 1}`;
+    let clean = Game.cleanName(name, `참가자${this.players.size + 1}`);
+    // 같은 이름이 여럿이면 화면에서 누가 누군지 알 수 없다. 뒤에 번호를 붙인다.
+    const taken = new Set([...this.players.values()].map(p => p.name));
+    if (taken.has(clean)) {
+      const base = clean.slice(0, 10);
+      let n = 2;
+      while (taken.has(base + n) && n < 100) n++;
+      clean = base + n;
+    }
     return this._newPlayer(id, clean, false, null);
   }
 
@@ -709,6 +736,87 @@ class Game {
       newFills: p.fills.filter(f => f.seq > since),
       fillSeq: p.fillSeq,
     };
+  }
+
+  // ── 저장과 복원 ───────────────────────────────────────────────
+  //
+  // 행사 중 서버가 죽으면 진행 중인 게임이 통째로 사라진다. 호가창까지 전부 담는다.
+  // 난수는 시드에서 새로 시작하므로 복원 뒤의 전개는 원래와 달라지지만,
+  // 참가자의 자산과 시장 상태는 그대로 이어진다.
+  serialize() {
+    return {
+      v: 1,
+      phase: this.phase,
+      tickNo: this.tickNo,
+      tapeSeq: this.tapeSeq,
+      salaryCount: this._salaryCount,
+      feesCollected: this.feesCollected,
+      startedAt: this.startedAt,
+      endedAt: this.endedAt,
+      paused: this.paused,
+      stocks: this.stocks.map(s => ({
+        code: s.code, fair: s.fair, last: s.last, open: s.open,
+        high: s.high, low: s.low, volume: s.volume, float: s.float, issued: s.issued,
+        history: s.history.slice(-600),
+        ipoBids: s.ipoBids,
+        bids: s.book.bids.map(o => ({ id: o.id, seq: o.seq, side: o.side, price: o.price, qty: o.qty, owner: o.owner, ts: o.ts })),
+        asks: s.book.asks.map(o => ({ id: o.id, seq: o.seq, side: o.side, price: o.price, qty: o.qty, owner: o.owner, ts: o.ts })),
+      })),
+      players: [...this.players.values()].map(p => ({
+        id: p.id, name: p.name, isBot: p.isBot, botType: p.botType,
+        cash: p.cash, holdings: p.holdings, costBasis: p.costBasis, costQty: p.costQty,
+        realized: p.realized, salaryTotal: p.salaryTotal, kicked: p.kicked,
+        fillSeq: p.fillSeq, fills: p.fills.slice(-40),
+      })),
+      news: this.news,
+      newsLog: this.newsLog.slice(-60),
+      notices: this.notices.slice(-30),
+      tape: this.tape.slice(-40),
+    };
+  }
+
+  /** serialize() 로 저장한 상태를 이 게임 인스턴스에 덮어쓴다 */
+  load(d) {
+    if (!d || d.v !== 1) throw err('BAD_SNAPSHOT', '알 수 없는 저장 형식입니다');
+    this.phase = d.phase;
+    this.tickNo = d.tickNo || 0;
+    this.tapeSeq = d.tapeSeq || 0;
+    this._salaryCount = d.salaryCount || 0;
+    this.feesCollected = d.feesCollected || 0;
+    this.startedAt = d.startedAt || null;
+    this.endedAt = d.endedAt || null;
+    this.paused = !!d.paused;
+
+    this.players.clear();
+    for (const q of d.players || []) {
+      const p = this._newPlayer(q.id, q.name, q.isBot, q.botType);
+      p.cash = q.cash; p.holdings = q.holdings || {};
+      p.costBasis = q.costBasis || {}; p.costQty = q.costQty || {};
+      p.realized = q.realized || 0; p.salaryTotal = q.salaryTotal || 0;
+      p.kicked = !!q.kicked; p.fillSeq = q.fillSeq || 0; p.fills = q.fills || [];
+    }
+
+    for (const sd of d.stocks || []) {
+      const s = this.stockByCode.get(sd.code);
+      if (!s) continue;
+      Object.assign(s, {
+        fair: sd.fair, last: sd.last, open: sd.open, high: sd.high, low: sd.low,
+        volume: sd.volume, float: sd.float, issued: sd.issued,
+        history: sd.history || [], ipoBids: sd.ipoBids || [],
+      });
+      s.book = new OrderBook(s.code);
+      for (const o of sd.bids || []) s.book.bids.push(Order.from(o));
+      for (const o of sd.asks || []) s.book.asks.push(Order.from(o));
+      s.book.bids.sort((a, b) => (b.price - a.price) || (a.seq - b.seq));
+      s.book.asks.sort((a, b) => (a.price - b.price) || (a.seq - b.seq));
+    }
+    bumpSeq(d.tapeSeq || 0);
+
+    this.news = d.news || [];
+    this.newsLog = d.newsLog || [];
+    this.notices = d.notices || [];
+    this.tape = d.tape || [];
+    return this;
   }
 
   // ── 진행 ──────────────────────────────────────────────────────

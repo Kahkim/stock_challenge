@@ -218,13 +218,60 @@ cfd48eb  눈치싸움 강화 — 호가 사다리와 공모 청약 비중
 
 ---
 
+## 10. 그 뒤에 추가된 운영 기능 (커밋 04656de 이후)
+
+화면에 직접 영향을 주는 것만 추립니다. 전체는 `docs/API.md` 를 보세요.
+
+### 반드시 반영해야 하는 것: `join` 에 `deviceId`
+
+```jsonc
+POST /api/rooms/{code}/join
+{ "name": "앨리스", "deviceId": "localStorage 에 보관한 임의 문자열" }
+```
+
+**이걸 안 보내면 새로고침한 참가자가 게임에서 영구히 튕겨 나갑니다.**
+50명이 모이면 새로고침하거나 통신이 끊기는 사람이 반드시 나옵니다.
+`deviceId` 가 있으면 같은 기기로 다시 들어올 때 원래 참가자로 복귀하고
+`playerToken` 도 그대로 돌아옵니다(`resumed: true`). 게임이 시작된 뒤에도 복귀는 됩니다.
+
+`crypto.randomUUID()` 를 `localStorage` 에 한 번 저장해 두고 계속 쓰면 됩니다.
+화면을 열 때는 `POST /resume` 로 보관한 토큰이 아직 유효한지 먼저 확인하세요.
+
+### 이름 표시는 반드시 서버 응답의 `name` 을 쓰세요
+
+제어문자·줄바꿈이 제거되고 연속 공백이 줄고 12자로 잘립니다.
+**같은 이름이 이미 있으면 뒤에 번호가 붙습니다**(`김철수` → `김철수2`).
+입력값을 그대로 그리면 서버가 보관한 이름과 달라집니다.
+
+### 새 화면 요소 세 가지
+
+| 필드 | 화면 |
+|---|---|
+| `snapshot.paused` | 일시정지 오버레이. 방장이 멈추면 게임 시간도 멈춥니다 |
+| `snapshot.connections` | 대기실·방장 화면의 "접속 중 47명" |
+| `GET /result.csv` | 결과 화면의 내려받기 버튼. `<a href download>` 로 바로 연결 |
+
+### 방장 화면에 넣을 만한 것
+
+- `POST /pause` · `/resume-game` — 일시정지·재개
+- `POST /kick` `{playerId}` — 참가자 내보내기
+- `POST /config` — 시작 전 봇 수·진행 시간 변경 (2번 대기실)
+
+### 429 를 만날 수 있습니다
+
+주문은 참가자당 초당 12건(버스트 25)으로 제한됩니다. 화면에서 연타를 막고 있다면
+사실상 만날 일이 없지만, 재시도 로직이 있다면 `RATE_LIMITED` 와 `Retry-After` 헤더를 처리하세요.
+
+---
+
 ## 가져가는 법
 
 ```bash
 git fetch origin claude/dreamy-knuth-bgjjrp
 git merge origin/claude/dreamy-knuth-bgjjrp     # 파일 충돌 없음 (design/ 과 src/ 가 분리되어 있음)
 node server.js                                   # localhost:3000
-npm test                                         # 58개 (엔진 27 + API 31)
+npm test                                         # 69개 (엔진 27 + API 42)
+node tests/load.test.js 50                       # 50명 동시접속 부하 테스트
 ```
 
 서버 쪽에 더 필요한 게 있으면 `docs/API.md` 에 없는 것으로 말씀해주세요.

@@ -126,4 +126,19 @@ class OrderBook {
   }
 }
 
-module.exports = { OrderBook, Order };
+/**
+ * 주문 번호 카운터를 끌어올린다. 저장된 상태를 복원할 때, 새로 나갈 주문 번호가
+ * 복원된 주문 번호와 겹치지 않도록 맞춰 준다.
+ */
+function bumpSeq(n) { if (Number.isFinite(n) && n > _seq) _seq = Math.floor(n); }
+
+/** 저장된 평면 객체에서 Order 를 되살린다 */
+Order.from = function (o) {
+  const x = Object.create(Order.prototype);
+  x.id = o.id; x.seq = o.seq; x.side = o.side;
+  x.price = o.price; x.qty = o.qty; x.owner = o.owner; x.ts = o.ts;
+  bumpSeq(o.seq);
+  return x;
+};
+
+module.exports = { OrderBook, Order, bumpSeq };

@@ -258,6 +258,38 @@ class Room {
   }
 }
 
+// ── 저장과 복원 ─────────────────────────────────────────────────
+Room.prototype.serialize = function () {
+  return {
+    v: 1,
+    code: this.code, title: this.title, hostToken: this.hostToken,
+    seed: this.seed, config: this.config,
+    paused: this.paused,
+    createdAt: this.createdAt, lastActivity: this.lastActivity,
+    tokens: [...this.tokens],       // [[playerToken, playerId], ...]
+    devices: [...this.devices],     // [[deviceId, playerToken], ...]
+    game: this.game.serialize(),
+  };
+};
+
+Room.restore = function (d) {
+  if (!d || d.v !== 1) throw new Error('알 수 없는 저장 형식입니다');
+  const room = new Room(d.code, d.config, d.title);
+  room.hostToken = d.hostToken;
+  room.seed = d.seed;
+  room.paused = !!d.paused;
+  room.createdAt = d.createdAt || Date.now();
+  room.lastActivity = d.lastActivity || Date.now();
+  room.tokens = new Map(d.tokens || []);
+  room.devices = new Map(d.devices || []);
+  room.game = new Game(d.config, d.seed).load(d.game);
+  // 진행 중이었고 멈춰 있지 않았다면 다시 돌린다
+  if (room.game.phase !== PHASE.LOBBY && room.game.phase !== PHASE.ENDED && !room.paused) {
+    room._startTimer();
+  }
+  return room;
+};
+
 class RoomStore {
   constructor() { this.rooms = new Map(); }
 
