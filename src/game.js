@@ -3,6 +3,7 @@
 const { STOCK_POOL, DEFAULTS, roundToTick } = require('./config');
 const { OrderBook } = require('./orderbook');
 const Bots = require('./bots');
+const News = require('./news');
 
 /** 결정론적 난수 (mulberry32) — 같은 seed 면 같은 게임이 재현된다. */
 function makeRng(seed) {
@@ -44,6 +45,8 @@ class Game {
     this.tape = [];          // 전체 체결 테이프 (현황판/차트용)
     this.tapeSeq = 0;
     this.notices = [];       // 게임 공지 (월급 지급, 공모 결과 등)
+    this.news = [];          // 효력이 살아 있는 돌발뉴스
+    this.newsLog = [];       // 지금까지 터진 뉴스 전체 (결과 화면용)
     this.startedAt = null;
     this.endedAt = null;
     this._salaryCount = 0;
@@ -208,6 +211,30 @@ class Game {
     }
   }
 
+  // ── 돌발뉴스 ──────────────────────────────────────────────────
+  _updateNews() {
+    const n = this.cfg.news;
+    if (!n || !n.enabled) return;
+    // 수명이 다한 뉴스를 걷어낸다
+    this.news = this.news.filter(x => this.tickNo - x.tick <= x.lifeTicks);
+
+    const fresh = News.maybeSpawn(this.cfg, this.stocks, this.news, this.tickNo, this.rnd);
+    if (!fresh) return;
+    this.news.push(fresh);
+
+    // 적정가를 즉시 점프시킨다. 체결가는 봇과 사람이 반응해야 따라온다.
+    const s = this.stockByCode.get(fresh.code);
+    if (s) s.fair = Math.max(1, s.fair * (1 + fresh.sign * fresh.impact));
+
+    this.newsLog.push({
+      id: fresh.id, code: fresh.code, name: fresh.name, sign: fresh.sign,
+      headline: fresh.headline, impactPct: fresh.sign * fresh.impact * 100,
+      atSec: Math.round(this.elapsedSec),
+      priceAt: s ? s.last : null,
+    });
+    this._notice(fresh.headline, fresh.sign > 0 ? 'news-up' : 'news-down');
+  }
+
   // ── 월급 ──────────────────────────────────────────────────────
   _applySalary() {
     const iv = this.cfg.salaryIntervalSec;
@@ -259,6 +286,8 @@ class Game {
 
   _botCtx() {
     return {
+      news: this.news,
+      tickNo: this.tickNo,
       marketCashRatio: this._marketCashRatio(),
       cashBiasSpread: this.cfg.botCashBiasSpread,
       rnd: this.rnd,
@@ -575,6 +604,12 @@ class Game {
           ? s.ipoBids.reduce((a, b) => a + b.qty, 0) : undefined,
       })),
       ranking: this.ranking().slice(0, 50),
+      news: this.news.map(n => ({
+        id: n.id, code: n.code, name: n.name, sign: n.sign, headline: n.headline,
+        impactPct: Math.round(n.sign * n.impact * 1000) / 10,
+        ageSec: Math.round((this.tickNo - n.tick) * this.cfg.tickMs / 1000),
+        lifeSec: Math.round(n.lifeTicks * this.cfg.tickMs / 1000),
+      })),
       notices: this.notices.slice(-12),
       tape: this.tape.slice(-40),
     };
@@ -627,6 +662,7 @@ class Game {
       return;
     }
     this._updateFair();
+    this._updateNews();
     this._applySalary();
     this._runBots();
     this._recordHistory();

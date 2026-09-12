@@ -137,7 +137,9 @@ test('월급이 정해진 주기대로 전원에게 지급된다', () => {
 });
 
 test('인플레이션이 적정가를 실제로 끌어올린다', () => {
-  const g = buildGame({ ipoSec: 0, inflationPerMin: 0.05, idioVolatility: 0, durationMin: 10 });
+  // 돌발뉴스는 적정가를 점프시키므로 인플레만 따로 보려면 꺼야 한다
+  const g = buildGame({ ipoSec: 0, inflationPerMin: 0.05, idioVolatility: 0, durationMin: 10,
+                        news: { enabled: false } });
   const f0 = g.stocks.map(s => s.fair);
   runTicks(g, 4 * 60);                    // 1분
   g.stocks.forEach((s, i) => {
@@ -147,7 +149,8 @@ test('인플레이션이 적정가를 실제로 끌어올린다', () => {
 });
 
 test('인플레이션이 봇을 통해 실제 체결가까지 전달된다', () => {
-  const g = buildGame({ durationMin: 6, inflationPerMin: 0.08, idioVolatility: 0.05, botCount: 40 });
+  const g = buildGame({ durationMin: 6, inflationPerMin: 0.08, idioVolatility: 0.05, botCount: 40,
+                        news: { enabled: false } });
   runTicks(g, 45);
   const open = g.stocks.map(s => s.last);
   runTicks(g, 4 * 240);
@@ -302,6 +305,68 @@ test('호가에 자기 주문만 있으면 시장가가 명확한 오류를 낸�
     assert.strictEqual(e.code, 'NO_COUNTERPARTY');
   }
   assert.strictEqual(me.holdings[s.code], 500, '실패한 시장가 매도가 주식을 묶어둠');
+});
+
+
+test('돌발뉴스가 발생하고 호재/악재가 대체로 균형을 이룬다', () => {
+  let pos = 0, neg = 0, total = 0;
+  for (let seed = 0; seed < 8; seed++) {
+    const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU','DGU','KKU'], botCount: 20,
+                         ipoSec: 5, durationMin: 15, tickMs: 250 }, seed + 55);
+    for (let i = 0; i < 6; i++) g.addPlayer('P' + i);
+    g.start();
+    runTicks(g, 25 + 4 * 900);
+    total += g.newsLog.length;
+    pos += g.newsLog.filter(n => n.sign > 0).length;
+    neg += g.newsLog.filter(n => n.sign < 0).length;
+  }
+  assert.ok(total >= 8 * 6, `15분에 뉴스가 평균 ${(total / 8).toFixed(1)}건뿐`);
+  const ratio = pos / (pos + neg);
+  assert.ok(ratio > 0.3 && ratio < 0.7, `호재 비율 ${(ratio * 100).toFixed(0)}% — 한쪽으로 쏠렸다`);
+});
+
+test('뉴스가 적정가를 즉시 점프시킨다', () => {
+  const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU'], botCount: 20, ipoSec: 0,
+                       durationMin: 15, tickMs: 250, inflationPerMin: 0, idioVolatility: 0 }, 91);
+  g.addPlayer('t'); g.start();
+  const seen = new Set();
+  let checked = 0;
+  for (let i = 0; i < 4 * 900 && checked < 3; i++) {
+    const before = new Map(g.stocks.map(s => [s.code, s.fair]));
+    g.tick();
+    for (const n of g.news) {
+      if (seen.has(n.id)) continue;
+      seen.add(n.id);
+      const s = g.stockByCode.get(n.code);
+      const moved = s.fair / before.get(n.code) - 1;
+      assert.ok(Math.sign(moved) === n.sign, `${n.sign > 0 ? '호재' : '악재'}인데 적정가가 ${(moved * 100).toFixed(1)}% 움직임`);
+      assert.ok(Math.abs(moved) > 0.01, `적정가 변화가 ${(moved * 100).toFixed(2)}% 로 너무 작다`);
+      checked++;
+    }
+  }
+  assert.ok(checked >= 1, '뉴스가 한 건도 발생하지 않았다');
+});
+
+test('봇이 뉴스에 한꺼번에 반응하지 않고 시차를 두고 동조한다', () => {
+  const News = require('../src/news');
+  const g = buildGame();
+  const bots = [...g.players.values()].filter(p => p.isBot).slice(0, 20);
+  const fake = { id: 'nx', code: 'SNU', sign: 1, strength: 0.06, tick: 100,
+                 lifeTicks: 360, reactionTicks: 160 };
+  let reactingAt110 = 0, reactingAt250 = 0;
+  for (const b of bots) {
+    if (News.reactionFor(b, fake, 110, g.rnd) !== 0) reactingAt110++;
+    if (News.reactionFor(b, fake, 250, g.rnd) !== 0) reactingAt250++;
+  }
+  assert.ok(reactingAt110 < bots.length, '뉴스 직후 전원이 즉시 반응한다 — 사람이 먼저 진입할 틈이 없다');
+  assert.ok(reactingAt250 > reactingAt110, '시간이 지나도 동조가 번지지 않는다');
+});
+
+test('뉴스를 끄면 뉴스가 한 건도 발생하지 않는다', () => {
+  const g = buildGame({ news: { enabled: false } });
+  runTicks(g, 45 + 4 * 600);
+  assert.strictEqual(g.newsLog.length, 0);
+  assert.strictEqual(g.news.length, 0);
 });
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

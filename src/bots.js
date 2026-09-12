@@ -1,6 +1,7 @@
 'use strict';
 
 const { roundToTick } = require('./config');
+const News = require('./news');
 
 /**
  * NPC 참가자(봇).
@@ -53,8 +54,22 @@ function buildRoster(count, mix, rnd) {
   });
 }
 
-/** 성향별 종목 선호 점수. 높을수록 많이 담고 싶어한다. */
-function preference(p, s) {
+/**
+ * 성향별 종목 선호 점수. 높을수록 많이 담고 싶어한다.
+ * 돌발뉴스가 떠 있으면 여기에 가산점이 붙는다 — 이게 봇의 '동조'다.
+ * 봇마다 뉴스를 인지하는 시점이 달라서 동조가 한꺼번에 오지 않고 서서히 번진다.
+ */
+function preference(p, s, ctx) {
+  let bonus = 0;
+  if (ctx && ctx.news && ctx.news.length) {
+    for (const n of ctx.news) {
+      if (n.code === s.code) bonus += News.reactionFor(p, n, ctx.tickNo, ctx.rnd);
+    }
+  }
+  return basePreference(p, s) + bonus;
+}
+
+function basePreference(p, s) {
   switch (p.botType) {
     case 'trend':  return s.refReturn;                    // 오른 종목에 올라탄다
     case 'contra': return -s.refReturn;                   // 내린 종목을 줍는다
@@ -69,8 +84,8 @@ function preference(p, s) {
 }
 
 /** 성향 점수를 목표 비중으로 바꾼다(소프트맥스). */
-function targetWeights(p, stocks, cashTarget, sharpness) {
-  const scores = stocks.map(s => preference(p, s));
+function targetWeights(p, stocks, cashTarget, sharpness, ctx) {
+  const scores = stocks.map(s => preference(p, s, ctx));
   const mx = Math.max(...scores);
   const exps = scores.map(v => Math.exp((v - mx) * sharpness));
   const sum = exps.reduce((a, b) => a + b, 0) || 1;
@@ -113,7 +128,12 @@ function decide(p, ctx) {
 
   // ── 호가 제시형: 자기 현금과 자기 주식으로 양쪽에 지정가를 건다 ──
   if (p.botType === 'maker') {
-    const s = stocks[Math.floor(rnd() * stocks.length)];
+    // 뉴스가 뜬 종목은 거래가 몰리므로 그쪽에 호가를 대줄 확률을 높인다
+    const hot = ctx.news && ctx.news.length
+      ? stocks.filter(x => ctx.news.some(n => n.code === x.code)) : [];
+    const s = (hot.length && rnd() < 0.5)
+      ? hot[Math.floor(rnd() * hot.length)]
+      : stocks[Math.floor(rnd() * stocks.length)];
     if (!(s.last > 0)) return [];
     const out = [];
     const bid = roundToTick(s.last * (1 - makerSpread * (0.5 + rnd())));
@@ -127,7 +147,7 @@ function decide(p, ctx) {
   }
 
   // ── 목표비중에서 가장 많이 벗어난 종목을 고쳐 잡는다 ──
-  const target = targetWeights(p, stocks, cashTarget, sharpness);
+  const target = targetWeights(p, stocks, cashTarget, sharpness, ctx);
   let pick = null, worst = 0;
   for (const s of stocks) {
     if (!(s.last > 0)) continue;

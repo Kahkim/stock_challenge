@@ -287,6 +287,7 @@ async function route(req, res, url) {
         changePct: s.open ? (s.last / s.open - 1) * 100 : 0,
       })),
       feesCollected: Math.round(g.feesCollected),
+      newsLog: g.newsLog,
     });
   }
 

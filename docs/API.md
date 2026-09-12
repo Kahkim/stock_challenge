@@ -228,10 +228,14 @@ SSE 를 못 쓰는 환경용. `{ "snapshot": {...}, "me": {...} }`. 토큰이 �
   "humanRanking": [ { "rank": 1, "id": "p1_6ze7", "name": "앨리스", "isBot": false, "nav": 3688125, "pnl": 688125, "pnlPct": 22.9 } ],
   "stocks": [ { "code": "SNU", "name": "서울대", "open": 1240, "last": 1105, "fair": 1396,
                 "high": 1310, "low": 1080, "volume": 13100, "issued": 7371, "changePct": -10.9 } ],
-  "feesCollected": 41200
+  "feesCollected": 41200,
+  "newsLog": [ { "id": "n412_a1b", "code": "SNU", "name": "서울대", "sign": 1,
+                 "headline": "서울대 대량 매수 유입 — 매도 호가 공백",
+                 "impactPct": 8.4, "atSec": 103, "priceAt": 1240 } ]
 }
 ```
 `ranking` 은 봇 포함 전체, `humanRanking` 은 사람만. **시상은 `humanRanking` 으로 하세요.**
+`newsLog` 는 게임 중 터진 뉴스 전체입니다. 결과 화면에서 차트 위에 표시하면 좋습니다.
 
 ---
 
@@ -287,6 +291,13 @@ es.addEventListener('state', (e) => {
     "ipoDemand": 12400           // phase==="ipo" 일 때만. 현재까지 청약된 총 수량
   }],
 
+  "news": [{                     // 지금 효력이 살아 있는 돌발뉴스 (없으면 빈 배열)
+    "id": "n1366_jq3m", "code": "HYU", "name": "한양대", "sign": -1,
+    "headline": "한양대 차익실현 매물 출회",
+    "impactPct": -6.9,           // 적정가에 준 충격
+    "ageSec": 12, "lifeSec": 90  // 뜬 지 12초, 총 90초간 유효
+  }],
+
   "ranking": [ { "rank": 1, "id": "p1_6ze7", "name": "앨리스", "isBot": false,
                  "nav": 3688125, "pnl": 688125, "pnlPct": 22.94 } ],
   "notices": [ { "seq": 164, "ts": 1789201076966, "text": "무상증자 5% — 보유 주식 2,810주 추가 배정", "kind": "bonus" } ],
@@ -295,7 +306,8 @@ es.addEventListener('state', (e) => {
 ```
 
 - `ranking` 은 기본적으로 **사람만** 포함합니다(`botExcludeFromRanking: true`). 상위 50명까지.
-- `notices[].kind`: `info` · `salary` · `bonus` · `ipo` · `open` · `close`. 종류별로 색을 다르게 주면 좋습니다.
+- `notices[].kind`: `info` · `salary` · `bonus` · `ipo` · `open` · `close` · `news-up` · `news-down`. 종류별로 색을 다르게 주면 좋습니다. 뉴스는 배너나 토스트로 크게 띄우세요.
+- `news` 는 **지금 효력이 살아 있는 뉴스만** 담습니다. 지나간 뉴스 전체는 `notices` 또는 결과 API 의 `newsLog` 에 있습니다.
 - `tape` 는 최근 40건의 전체 체결 내역입니다. `side` 는 **체결을 일으킨 쪽**(공격자)이라 매수면 상승 체결입니다.
 - `depth.bids/asks` 는 **비어 있을 수 있습니다.** 특히 매도 호가는 전체 시간의 약 20% 동안 빕니다. 빈 상태를 정상으로 그려주세요.
 
@@ -385,6 +397,15 @@ es.addEventListener('state', (e) => {
 **시장가는 실패할 수 있습니다.** 반대 호가가 비어 있으면 `NO_COUNTERPARTY` 가 납니다.
 시장가 버튼 옆에 항상 지정가 입력을 함께 두세요.
 
+**돌발뉴스.** 평균 70초마다 종목별 호재/악재가 터집니다(15분에 약 12건, 호재:악재 ≈ 5:5).
+뉴스는 적정가를 즉시 점프시키고, 봇들이 **시차를 두고** 동조합니다.
+봇마다 뉴스를 인지하는 시점이 흩어져 있어서 동조가 서서히 번지고, 그래서 **먼저 반응한 사람이 이득을 봅니다.**
+
+> **화면 설계상 가장 중요한 점**: 뉴스 팝업에는 반드시 **바로 체결되는 주문 버튼**을 두세요.
+> 측정 결과 소극적 지정가(현재가)로 내면 즉시 체결률이 23%에 그쳐 현금이 호가에 묶이고,
+> 그 상태로 인플레이션을 맞아 오히려 **가만히 있느니만 못한 결과**가 나왔습니다(15.1등 / 24명 중).
+> 현재가보다 2% 높게 지르는 "즉시 매수" 버튼을 주면 체결률이 67%로 오르고 성적이 5.3등으로 뒤집힙니다.
+
 ---
 
 ## 8. HTS 화면 구성에 필요한 데이터 대응표
@@ -405,3 +426,4 @@ es.addEventListener('state', (e) => {
 | 순위표 | `snapshot.ranking[]` |
 | 남은 시간 | `snapshot.remainSec` (공모 중에는 `ipoRemainSec`) |
 | 공지 배너 | `snapshot.notices[]` |
+| 돌발뉴스 배너 | `snapshot.news[]` (활성) + `notices[].kind === "news-up" / "news-down"` |
