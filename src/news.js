@@ -66,17 +66,20 @@ function maybeSpawn(cfg, stocks, activeNews, tickNo, rnd) {
   const headline = list[Math.floor(rnd() * list.length)].replace('{n}', stock.name);
 
   // 충격 크기를 매번 흩뜨린다. 전부 같은 크기면 패턴이 읽혀서 재미가 없다.
-  // 악재에는 배수를 더 얹는다. 시장이 인플레이션으로 계속 오르는 구조라
-  // 호재와 같은 세기로는 악재가 상승 압력에 묻혀 아예 작동하지 않는다.
-  const scale = (0.5 + rnd() * 1.0) * (sign < 0 ? (n.negativeMultiplier || 1) : 1);
+  const scale = 0.5 + rnd() * 1.0;
+
+  // 악재 배수는 '봇이 얼마나 세게 반응하는가'에만 건다. 적정가 점프에는 걸지 않는다.
+  // 둘 다에 곱하면 악재 한 건이 적정가를 30% 넘게 떨어뜨려(실측 -32.9%, 최대 -46.9%)
+  // 적정가가 인플레이션 경로에서 통째로 이탈한다.
+  const negMult = sign < 0 ? (n.negativeMultiplier || 1) : 1;
   return {
     id: 'n' + tickNo + '_' + Math.floor(rnd() * 1e6).toString(36),
     code: stock.code,
     name: stock.name,
     sign,
     headline,
-    impact: n.impact * scale,        // 적정가에 줄 충격
-    strength: n.strength * scale,    // 봇 선호 가산점
+    impact: n.impact * scale,               // 적정가에 줄 충격 (호재·악재 대칭)
+    strength: n.strength * scale * negMult,  // 봇 선호 가산점 (악재는 더 세게)
     tick: tickNo,
     lifeTicks: Math.max(1, Math.round(n.lifeSec * 1000 / cfg.tickMs)),
     reactionTicks: Math.max(1, Math.round(n.reactionSec * 1000 / cfg.tickMs)),
