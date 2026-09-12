@@ -1,0 +1,913 @@
+<title>스톡 챌린지 데모</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+  :root{
+    --bg:#0A0C10; --surf:#12151B; --surf2:#191D25; --surf3:#20252E;
+    --line:#242A34; --line2:#2E3540;
+    --text:#EDEFF3; --dim:#8B93A1; --dim2:#5C6472;
+    --up:#FF4D5E; --down:#4C8DFF; --acc:#C6F24E; --warn:#F5A524; --ink:#0A0C10;
+    --upT:rgba(255,77,94,.13); --downT:rgba(76,141,255,.13);
+    --accT:rgba(198,242,78,.10); --warnT:rgba(245,165,36,.13);
+    --sans:'IBM Plex Sans KR',system-ui,-apple-system,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{overscroll-behavior-y:none}
+  a{color:var(--acc);text-decoration:none} a:hover{color:#DCFF8A}
+  .m{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  #app{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);
+       display:flex;flex-direction:column;position:relative}
+  .scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)}
+  .pad{padding:0 16px}
+  button{font-family:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+  button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:8px}
+
+  .hdr{height:56px;display:flex;align-items:center;gap:8px;padding:0 16px 0 6px;
+       border-bottom:1px solid var(--line);flex-shrink:0}
+  .hdr h1{font-size:17px;font-weight:600;margin:0;flex:1;display:flex;align-items:center;gap:7px}
+  .iconbtn{width:44px;height:44px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .lbl{font-size:12px;font-weight:600;color:var(--dim2);letter-spacing:.04em;margin-bottom:9px}
+  .seg{display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:12px}
+  .seg button{flex:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;
+              color:var(--dim);font-size:14px;font-weight:500}
+  .seg button[aria-pressed="true"]{background:var(--acc);color:var(--ink);font-weight:700}
+  .card{background:var(--surf);border:1px solid var(--line);border-radius:14px}
+  .cta{height:56px;width:100%;display:flex;align-items:center;justify-content:center;border-radius:14px;
+       background:var(--acc);color:var(--ink);font-size:16px;font-weight:700}
+  .cta[disabled]{background:var(--surf3);color:var(--dim2)}
+  .ghost{height:50px;display:flex;align-items:center;justify-content:center;border-radius:13px;
+         border:1px solid var(--line2);color:var(--dim);font-size:15px;font-weight:600}
+  .hint{display:flex;gap:6px;align-items:flex-start;font-size:11px;color:var(--dim2);line-height:1.55;margin-top:9px}
+  .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+  .badge{height:20px;padding:0 6px;border-radius:5px;font-size:10px;font-weight:700;display:inline-flex;align-items:center}
+  .row{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+  .grow{flex:1;min-width:0}
+  .rt{text-align:right}
+  .sticky{position:sticky;bottom:0;background:var(--surf);border-top:1px solid var(--line);
+          padding:12px 16px calc(16px + env(safe-area-inset-bottom));z-index:5}
+  .step{display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:var(--bg);
+        border:1px solid var(--line2);border-radius:11px}
+  .step .v{flex:1;text-align:right;font-size:17px;font-weight:700}
+  .step button{width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+               border-radius:8px;background:var(--surf3)}
+  .chips{display:flex;gap:6px}
+  .chips button{flex:1;height:34px;white-space:nowrap;display:flex;align-items:center;justify-content:center;border-radius:8px;
+                border:1px solid var(--line);color:var(--dim);font-size:11px;font-weight:600}
+  .tabs{display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:12px;margin:0 16px}
+  .tabs button{flex:1;height:40px;display:flex;align-items:center;justify-content:center;border-radius:9px;
+               color:var(--dim2);font-size:14px;font-weight:500}
+  .tabs button[aria-pressed="true"]{background:var(--surf3);color:var(--text);font-weight:700}
+  .bar{height:3px;border-radius:2px;background:var(--surf3);display:flex;overflow:hidden}
+  .bar i{background:var(--acc);border-radius:2px;display:block}
+  .toastwrap{position:fixed;left:0;right:0;bottom:0;z-index:40;pointer-events:none;
+             display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px;
+             padding:0 16px calc(12px + env(safe-area-inset-bottom))}
+  .toast{width:100%;max-width:398px;background:var(--surf2);border:1px solid var(--line2);border-radius:16px;
+         padding:13px 15px;box-shadow:0 18px 44px rgba(0,0,0,.6);animation:rise .22s ease-out}
+  @keyframes rise{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+  @media (prefers-reduced-motion:reduce){.toast{animation:none}}
+  .modalbg{position:fixed;inset:0;background:rgba(4,6,9,.8);z-index:50;display:flex;align-items:center;
+           justify-content:center;padding:16px}
+  .modal{width:100%;max-width:398px;background:var(--surf);border:1px solid var(--line2);border-radius:20px;padding:20px;
+         box-shadow:0 28px 70px rgba(0,0,0,.65)}
+  canvas{display:block;width:100%;height:200px}
+  .depthrow{display:flex;align-items:center;height:44px;border-bottom:1px solid var(--line)}
+  /* 좌우 잔량 셀은 같은 폭이어야 막대 길이를 비교할 수 있다. 고정폭은 375px 폰에서 넘치므로 flex 로 나눈다. */
+  .qcell{flex:1 1 0;min-width:0;height:44px;position:relative;display:flex;align-items:center}
+  .qcell.a{justify-content:flex-end;padding-right:12px}
+  .qcell.b{gap:7px;padding-left:12px}
+  .qbar{position:absolute;top:6px;height:32px;border-radius:3px}
+  .pcell{flex:0 0 104px;height:44px;display:flex;flex-direction:column;
+         align-items:center;justify-content:center;background:var(--surf);
+         border-left:1px solid var(--line);border-right:1px solid var(--line)}
+</style>
+
+<div id="app">
+  <div id="view" class="scroll"></div>
+</div>
+<div class="toastwrap" id="toasts"></div>
+<div id="modal"></div>
+
+<script>
+/* ============================================================================
+   더미 API — 서버(claude/dreamy-knuth-bgjjrp) 응답 모양을 그대로 흉내 낸다.
+   화면은 API.snapshot() / API.me() 만 읽으므로, 진짜 서버로 바꿀 때는
+   이 블록만 fetch + EventSource 로 갈아끼우면 된다.  (SWAP POINT 주석 참고)
+   ========================================================================= */
+const CFG = {
+  seedMoney:1000000, salaryAmount:100000, salaryIntervalSec:60, inflationPerMin:0.05,
+  maxBonusRate:0.05, idioVolatility:0.30, durationMin:15, ipoSec:45, tickMs:250,
+  lotSize:10, feeRate:0.0015, floatCapitalRatio:0.60, botCount:30,
+  botExcludeFromRanking:true, botActionRate:0.035, makerSpread:0.006, lookbackSec:120,
+  botMix:{trend:.60, maker:.20, noise:.15, contra:.03, value:.02},
+};
+const POOL = [
+  {code:'SNU',name:'서울대',initialPrice:1200,color:'#1b3f7a'},
+  {code:'YON',name:'연세대',initialPrice:2500,color:'#0a2d5e'},
+  {code:'KOR',name:'고려대',initialPrice:3400,color:'#8b1a2b'},
+  {code:'HYU',name:'한양대',initialPrice:1800,color:'#0f4c81'},
+  {code:'DGU',name:'동국대',initialPrice:900, color:'#d4870c'},
+  {code:'KKU',name:'건국대',initialPrice:2200,color:'#00704a'},
+  {code:'HON',name:'홍익대',initialPrice:5000,color:'#1a1a2e'},
+  {code:'KHU',name:'경희대',initialPrice:1500,color:'#8c2b3f'},
+  {code:'KGU',name:'경기대',initialPrice:3000,color:'#2b5f8c'},
+  {code:'SSU',name:'숭실대',initialPrice:4200,color:'#1f6f3f'},
+];
+const FRIENDS = ['차트왕','학교사랑','눈물의손절','뒷북러','가만히있기'];
+
+const tickSize = p => p<2000?5:p<5000?10:25;
+const roundTick = p => { const t=tickSize(p); return Math.max(t, Math.round(p/t)*t); };
+const roundLot  = q => Math.max(0, Math.round(q/CFG.lotSize)*CFG.lotSize);
+const floorLot  = q => Math.max(0, Math.floor(q/CFG.lotSize)*CFG.lotSize);
+const fee = a => Math.round(a*CFG.feeRate);
+let _s=1; const rnd=()=>{_s=(_s*1664525+1013904223)>>>0; return _s/4294967296;};
+const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+const pick = a => a[Math.floor(rnd()*a.length)];
+
+const G = {
+  phase:'lobby', cfg:{...CFG}, speed:1, elapsed:0, ipoElapsed:0, seq:0,
+  stocks:[], players:[], me:null, notices:[], tape:[], salaryCount:0, endedAt:null,
+};
+
+function makeStocks(codes){
+  const totalSeed = G.cfg.seedMoney * (G.players.length || 1);
+  const cap = totalSeed * G.cfg.floatCapitalRatio / codes.length;
+  return codes.map(c=>{
+    const p = POOL.find(x=>x.code===c);
+    return {...p, fair:p.initialPrice, last:p.initialPrice, open:p.initialPrice,
+      high:p.initialPrice, low:p.initialPrice, volume:0,
+      float:roundLot(cap/p.initialPrice)||CFG.lotSize, issued:0,
+      bids:[], asks:[], history:[], ipoBids:[]};
+  });
+}
+function makePlayers(){
+  const arr=[{id:'me',name:'나',isBot:false,human:true}];
+  FRIENDS.forEach((n,i)=>arr.push({id:'f'+i,name:n,isBot:false,human:true,sim:true}));
+  const types=[]; for(const [t,w] of Object.entries(G.cfg.botMix))
+    for(let i=0;i<Math.round(w*G.cfg.botCount);i++) types.push(t);
+  while(types.length<G.cfg.botCount) types.push('trend');
+  for(let i=0;i<G.cfg.botCount;i++)
+    arr.push({id:'b'+i,name:'봇'+(i+1),isBot:true,human:false,type:types[i]});
+  return arr.map(p=>({...p, type:p.type||pick(['trend','trend','maker','noise','value','contra']),
+    cash:G.cfg.seedMoney, holdings:{}, cost:{}, realized:0, salaryTotal:0, orders:[],
+    bias:0.3+rnd()*0.4}));
+}
+
+function heldValue(p){ let v=0; for(const s of G.stocks) v+=(p.holdings[s.code]||0)*s.last; return v; }
+function lockedCash(p){ let v=0; for(const o of p.orders) if(o.side==='buy') v+=o.price*o.qty; return v; }
+function nav(p){ return p.cash + lockedCash(p) + heldValue(p); }
+function invested(p){ return G.cfg.seedMoney + p.salaryTotal; }
+
+/* ---- 체결 엔진 ---- */
+function notice(text,kind){ G.notices.push({seq:++G.seq,ts:Date.now(),text,kind});
+  if(G.notices.length>40) G.notices.shift(); }
+function recordTrade(s,price,qty,side){
+  G.tape.push({seq:++G.seq,code:s.code,price,qty,side,t:Math.round(G.elapsed)});
+  if(G.tape.length>40) G.tape.shift();
+  s.last=price; s.high=Math.max(s.high,price); s.low=Math.min(s.low,price); s.volume+=qty;
+}
+/* 체결 한 건. 매수 원금은 "대기 주문이면 이미 예치됨 / 공격 주문이면 지금 지불" 로 갈린다.
+   여기 한 곳에서만 현금이 움직인다 — 두 군데서 만지면 이중 계상이 난다. */
+function execute(s,resting,aggressor,aggSide,q){
+  const price=resting.price, amt=price*q, f=fee(amt);
+  const rp=G.players.find(p=>p.id===resting.playerId); if(!rp) return;
+  const buyer = aggSide==='buy'? aggressor : rp;
+  const seller= aggSide==='buy'? rp : aggressor;
+  if(buyer===aggressor) buyer.cash-=amt;      // 대기 매수는 place() 에서 이미 예치했다
+  buyer.cash-=f;
+  seller.cash+=amt-f;
+  buyer.holdings[s.code]=(buyer.holdings[s.code]||0)+q;
+  buyer.cost[s.code]=(buyer.cost[s.code]||0)+amt+f;
+  const sq=seller.holdings[s.code]||0, sc=seller.cost[s.code]||0;
+  const unit=sq? sc/sq : price;
+  seller.holdings[s.code]=Math.max(0,sq-q);
+  seller.cost[s.code]=Math.max(0,sc-unit*q);
+  seller.realized+=(amt-f)-unit*q;
+  recordTrade(s,price,q,aggSide);
+  if(buyer.id==='me') pushFill({code:s.code,name:s.name,side:'buy',price,qty:q,amount:amt,fee:f});
+  if(seller.id==='me') pushFill({code:s.code,name:s.name,side:'sell',price,qty:q,amount:amt,fee:f});
+}
+function place(player,s,side,price,qty,market){
+  qty=floorLot(qty); if(qty<=0) return {filled:0,resting:0,orderId:null};
+  const book = side==='buy'? s.asks : s.bids;
+  book.sort((a,b)=> side==='buy'? a.price-b.price : b.price-a.price);
+  const crosses = o => market || (side==='buy'? o.price<=price : o.price>=price);
+  let filled=0;
+  while(qty>0 && book.length && crosses(book[0])){
+    const o=book[0];
+    if(o.playerId===player.id) break;                       // 자기 주문끼리는 체결 안 된다
+    const q=Math.min(qty,o.qty);
+    if(side==='buy'  && player.cash < o.price*q+fee(o.price*q)) break;
+    if(side==='sell' && (player.holdings[s.code]||0) < q) break;
+    execute(s,o,player,side,q);
+    o.qty-=q; qty-=q; filled+=q;
+    if(o.qty<=0){ book.shift();
+      const op=G.players.find(p=>p.id===o.playerId);
+      if(op) op.orders=op.orders.filter(x=>x.id!==o.id); }
+  }
+  if(market||qty<=0) return {filled,resting:0,orderId:null};
+  if(side==='buy') qty=Math.min(qty,floorLot(player.cash/price));
+  else { const resting=player.orders.filter(o=>o.code===s.code&&o.side==='sell')
+           .reduce((a,o)=>a+o.qty,0);
+         qty=Math.min(qty,floorLot((player.holdings[s.code]||0)-resting)); }
+  if(qty<=0) return {filled,resting:0,orderId:null};
+  const o={id:'o'+(++G.seq),playerId:player.id,code:s.code,side,price,qty};
+  (side==='buy'? s.bids : s.asks).push(o); player.orders.push(o);
+  if(side==='buy') player.cash-=price*qty;                  // 매수는 원금 예치
+  return {filled,resting:qty,orderId:o.id};
+}
+function cancel(player,orderId){
+  const o=player.orders.find(x=>x.id===orderId); if(!o) return 0;
+  const s=G.stocks.find(x=>x.code===o.code);
+  const book = o.side==='buy'? s.bids : s.asks;
+  const i=book.findIndex(x=>x.id===orderId); if(i>=0) book.splice(i,1);
+  player.orders=player.orders.filter(x=>x.id!==orderId);
+  if(o.side==='buy') player.cash+=o.price*o.qty;
+  return o.qty;
+}
+
+/* ---- 봇 ---- */
+function botAct(b){
+  const s=pick(G.stocks);
+  const held=b.holdings[s.code]||0;
+  if(b.type==='maker'){
+    const sp=s.last*CFG.makerSpread;
+    if(b.cash>s.last*CFG.lotSize*2) place(b,s,'buy',roundTick(s.last-sp),CFG.lotSize*(1+Math.floor(rnd()*3)));
+    if(held>=CFG.lotSize) place(b,s,'sell',roundTick(s.last+sp),CFG.lotSize*(1+Math.floor(rnd()*3)));
+    return;
+  }
+  const back=s.history.filter(h=>h.t>=G.elapsed-CFG.lookbackSec);
+  const mom = back.length>1 ? s.last/back[0].price-1 : 0;
+  const val = s.fair? s.last/s.fair-1 : 0;
+  let score=0;
+  if(b.type==='trend') score=mom*4;
+  else if(b.type==='contra') score=-mom*4;
+  else if(b.type==='value') score=-val*6;
+  else score=(b.bias-0.5)*2 + gauss()*0.3;
+  // 봇은 사람과 같은 정보(현재가·적정가)를 본다. 괴리가 벌어지면 모두가 조금씩 메우려 한다 —
+  // 이게 없으면 인플레로 오른 적정가를 체결가가 못 따라가 전 종목이 -30% 저평가로 굳는다.
+  score += -val*1.5;
+  const buy = score>0;
+  const qty = buy ? Math.max(CFG.lotSize, floorLot(b.cash*0.05/s.last))
+                  : Math.max(CFG.lotSize, floorLot(held*0.15));
+  const off = s.last*(0.001+rnd()*0.006)*(buy?1:-1);
+  const px = roundTick(s.last+off);
+  if(buy){ if(b.cash>px*qty*1.01) place(b,s,'buy',px,qty); }
+  else if(held>=qty) place(b,s,'sell',px,qty);
+}
+
+/* ---- 진행 ---- */
+function issueBonus(){
+  const cashAdded=G.cfg.salaryAmount*G.players.length;
+  let stockValue=0; for(const s of G.stocks) for(const p of G.players) stockValue+=(p.holdings[s.code]||0)*s.last;
+  if(stockValue<=0) return;
+  const rate=Math.min(G.cfg.maxBonusRate, cashAdded/stockValue);
+  let mine=[];
+  for(const s of G.stocks){ let add=0;
+    for(const p of G.players){ const h=p.holdings[s.code]||0; const b=Math.floor(h*rate);
+      if(b>0){ p.holdings[s.code]=h+b; add+=b; if(p.id==='me') mine.push(s.name+' +'+b); } }
+    s.issued+=add;
+  }
+  notice(`무상증자 ${(rate*100).toFixed(1)}%${mine.length?' — '+mine.join(', '):''}`,'bonus');
+  return {rate,mine};
+}
+function tick(dt){
+  if(G.phase==='ipo'){
+    G.ipoElapsed+=dt;
+    for(const s of G.stocks){
+      if(rnd()<0.35){ const b=pick(G.players.filter(p=>p.id!=='me'));
+        const px=roundTick(s.initialPrice*(1+rnd()*0.25));
+        const q=floorLot(b.cash*0.12/px);
+        if(q>0 && b.cash>=px*q){ b.cash-=px*q; s.ipoBids.push({playerId:b.id,price:px,qty:q}); } }
+    }
+    if(G.ipoElapsed>=G.cfg.ipoSec) closeIpo();
+    return;
+  }
+  if(G.phase!=='trading') return;
+  G.elapsed+=dt;
+  const drift=Math.log(1+G.cfg.inflationPerMin)*(dt/60);
+  const sig=G.cfg.idioVolatility*Math.sqrt(dt/(G.cfg.durationMin*60));
+  for(const s of G.stocks){ s.fair=Math.max(1,s.fair*Math.exp(drift+gauss()*sig));
+    const t=Math.round(G.elapsed);
+    if(!s.history.length||s.history[s.history.length-1].t<t)
+      s.history.push({t,price:s.last,fair:Math.round(s.fair)});
+    if(s.history.length>1800) s.history.shift(); }
+  for(const b of G.players) if(b.isBot||b.sim) if(rnd()<G.cfg.botActionRate*(dt/0.25)) botAct(b);
+  const due=Math.floor(G.elapsed/G.cfg.salaryIntervalSec);
+  if(due>G.salaryCount){ G.salaryCount=due;
+    for(const p of G.players){ p.cash+=G.cfg.salaryAmount; p.salaryTotal+=G.cfg.salaryAmount; }
+    notice(`월급 ${G.cfg.salaryAmount.toLocaleString()}원 지급`,'salary');
+    const b=issueBonus();
+    pushSalary(b);
+  }
+  if(G.elapsed>=G.cfg.durationMin*60){ G.phase='ended'; G.endedAt=Date.now(); notice('장 마감','close'); }
+}
+function closeIpo(){
+  for(const s of G.stocks){
+    const bids=[...s.ipoBids].sort((a,b)=>b.price-a.price);
+    let cum=0, clearing=s.initialPrice;
+    for(const b of bids){ cum+=b.qty; clearing=b.price; if(cum>=s.float) break; }
+    const eligible=bids.filter(b=>b.price>=clearing);
+    const demand=eligible.reduce((a,b)=>a+b.qty,0);
+    const ratio=demand>0?Math.min(1,s.float/demand):0;
+    let issued=0;
+    for(const b of eligible){
+      const alloc=floorLot(b.qty*ratio); const p=G.players.find(x=>x.id===b.playerId);
+      const spend=alloc*clearing, f=fee(spend);
+      p.cash += b.price*b.qty;              // 증거금 전액 환불
+      if(alloc>0 && p.cash>=spend+f){
+        p.cash-=spend+f; p.holdings[s.code]=(p.holdings[s.code]||0)+alloc;
+        p.cost[s.code]=(p.cost[s.code]||0)+spend+f; issued+=alloc;
+        if(p.id==='me') pushFill({code:s.code,name:s.name,side:'buy',price:clearing,qty:alloc,
+          amount:spend,fee:f,tag:'공모'});
+      }
+    }
+    for(const b of bids.filter(b=>b.price<clearing)){
+      const p=G.players.find(x=>x.id===b.playerId); if(p) p.cash+=b.price*b.qty;
+    }
+    s.open=clearing; s.last=clearing; s.high=clearing; s.low=clearing; s.issued=issued;
+    s.ipoBids=[]; s.history=[{t:0,price:clearing,fair:Math.round(s.fair)}];
+  }
+  G.phase='trading'; notice('정규장 개장','open');
+  for(let i=0;i<160;i++) botAct(pick(G.players.filter(p=>p.isBot)));
+  go('market');
+}
+
+/* ---- API (SWAP POINT) ---------------------------------------------------
+   진짜 서버로 바꿀 때: 아래 함수들을 fetch/EventSource 로 교체하면 된다.
+     getMeta      → GET  /api/meta
+     createRoom   → POST /api/rooms
+     start        → POST /api/rooms/{code}/start
+     ipoBid       → POST /api/rooms/{code}/ipo-bids
+     order/cancel → POST /api/rooms/{code}/orders , /orders/cancel
+     snapshot/me  → SSE  /api/rooms/{code}/stream 의 state 이벤트
+   ------------------------------------------------------------------------ */
+const API = {
+  getMeta:()=>({stockPool:POOL, defaults:{...CFG}}),
+  createRoom(cfg){
+    Object.assign(G.cfg,cfg); G.players=makePlayers(); G.me=G.players[0];
+    G.stocks=makeStocks(cfg.stockCodes); G.notices=[]; G.tape=[];
+    G.elapsed=0; G.ipoElapsed=0; G.salaryCount=0; G.endedAt=null;
+    G.phase = G.cfg.ipoSec>0 ? 'ipo' : 'trading';
+    if(G.phase==='trading'){
+      // 공모를 끄면 아무도 주식이 없어 매도 호가가 영원히 안 생긴다.
+      // 서버의 initialShares 처럼 발행량을 초기가로 균등 배정해 시장이 돌게 한다.
+      for(const s of G.stocks){
+        s.open=s.initialPrice; s.history=[{t:0,price:s.last,fair:s.initialPrice}];
+        const each=floorLot(s.float/G.players.length); let issued=0;
+        for(const p of G.players){
+          const cost=each*s.initialPrice;
+          if(each<=0||p.cash<cost) continue;
+          p.cash-=cost; p.holdings[s.code]=(p.holdings[s.code]||0)+each;
+          p.cost[s.code]=(p.cost[s.code]||0)+cost; issued+=each;
+        }
+        s.issued=issued;
+      }
+      for(let i=0;i<160;i++) botAct(pick(G.players.filter(p=>p.isBot))); }
+    return {roomCode:'DEMO'+Math.floor(rnd()*900+100)};
+  },
+  ipoBid(code,price,qty){
+    const s=G.stocks.find(x=>x.code===code); const need=price*qty;
+    if(G.me.cash<need) return {error:{code:'INSUFFICIENT_CASH',message:'현금이 부족합니다'}};
+    G.me.cash-=need; s.ipoBids.push({playerId:'me',price,qty});
+    return {code,price,qty,reserved:need};
+  },
+  order(code,side,price,qty,market){
+    if(G.phase!=='trading') return {error:{code:'NOT_TRADING',message:'거래 시간이 아닙니다'}};
+    const s=G.stocks.find(x=>x.code===code);
+    if(market){ const book=side==='buy'?s.asks:s.bids;
+      if(!book.length) return {error:{code:'NO_COUNTERPARTY',message:'반대 호가가 없습니다'}}; }
+    if(side==='buy'){ const cost=(market? s.last:price)*qty;
+      if(G.me.cash<cost) return {error:{code:'INSUFFICIENT_CASH',message:'현금이 부족합니다'}}; }
+    else { const free=(G.me.holdings[code]||0)-G.me.orders.filter(o=>o.code===code&&o.side==='sell')
+        .reduce((a,o)=>a+o.qty,0);
+      if(free<qty) return {error:{code:'INSUFFICIENT_SHARES',message:'보유 주식이 부족합니다'}}; }
+    return place(G.me,s,side,price,qty,market);
+  },
+  cancel(id){ return {cancelled:cancel(G.me,id)}; },
+  snapshot(){
+    const depth=s=>{
+      const agg=(arr,desc)=>{ const m=new Map();
+        for(const o of arr) m.set(o.price,(m.get(o.price)||0)+o.qty);
+        return [...m.entries()].map(([price,qty])=>({price,qty}))
+          .sort((a,b)=>desc?b.price-a.price:a.price-b.price).slice(0,10); };
+      return {bids:agg(s.bids,true), asks:agg(s.asks,false)};
+    };
+    const rank=G.players.filter(p=>p.human).map(p=>({id:p.id,name:p.name,isBot:false,
+      nav:Math.round(nav(p)),pnl:Math.round(nav(p)-invested(p)),
+      pnlPct:(nav(p)/invested(p)-1)*100})).sort((a,b)=>b.nav-a.nav)
+      .map((p,i)=>({rank:i+1,...p}));
+    return {phase:G.phase, elapsedSec:Math.round(G.elapsed),
+      ipoRemainSec:Math.max(0,Math.ceil(G.cfg.ipoSec-G.ipoElapsed)),
+      remainSec:Math.max(0,Math.ceil(G.cfg.durationMin*60-G.elapsed)),
+      playerCount:G.players.length, humanCount:G.players.filter(p=>p.human).length,
+      config:{...G.cfg},
+      stocks:G.stocks.map(s=>({code:s.code,name:s.name,color:s.color,last:s.last,
+        fair:Math.round(s.fair),open:s.open,high:s.high,low:s.low,volume:s.volume,
+        float:s.float,issued:s.issued,
+        changePct:(s.last/s.open-1)*100, vsFairPct:s.fair?(s.last/s.fair-1)*100:0,
+        depth:depth(s), ipoDemand:s.ipoBids.reduce((a,b)=>a+b.qty,0)})),
+      ranking:rank, notices:G.notices.slice(-6), tape:G.tape.slice(-40)};
+  },
+  me(){
+    const p=G.me;
+    return {id:p.id,name:p.name,cash:Math.round(p.cash),lockedCash:Math.round(lockedCash(p)),
+      nav:Math.round(nav(p)),invested:invested(p),salaryTotal:p.salaryTotal,
+      realized:Math.round(p.realized),
+      holdings:G.stocks.filter(s=>(p.holdings[s.code]||0)>0).map(s=>{
+        const qty=p.holdings[s.code], c=p.cost[s.code]||0, ev=qty*s.last;
+        return {code:s.code,name:s.name,color:s.color,qty,
+          locked:p.orders.filter(o=>o.code===s.code&&o.side==='sell').reduce((a,o)=>a+o.qty,0),
+          avgPrice:Math.round(c/qty),last:s.last,evalAmount:ev,pnl:Math.round(ev-c),
+          pnlPct:c?(ev/c-1)*100:0};}),
+      openOrders:p.orders.map(o=>({id:o.id,code:o.code,
+        name:G.stocks.find(s=>s.code===o.code).name,side:o.side,price:o.price,qty:o.qty}))};
+  },
+};
+</script>
+
+<script>
+/* ============================================================================
+   화면
+   ========================================================================= */
+const $ = s => document.querySelector(s);
+const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
+const U = { view:'setup', codes:POOL.map(s=>s.code), dur:15, ipoSec:45, seed:1000000,
+            bots:30, speed:4, code:null, tab:'호가', price:0, qty:CFG.lotSize, market:false,
+            ipoCode:'SNU', ipoPrice:0, ipoQty:0, sort:'chg' };
+
+const n  = v => Math.round(v).toLocaleString('en-US');
+const pc = v => (v>=0?'+':'−')+Math.abs(v).toFixed(2)+'%';
+const p1 = v => (v>=0?'+':'−')+Math.abs(v).toFixed(1)+'%';
+const sg = v => (v>=0?'+':'−')+n(Math.abs(v));
+const cl = v => v>=0?'var(--up)':'var(--down)';
+const clk= s => String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.round(s)%60).padStart(2,'0');
+const esc= s => String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function light(hex,a=.45){const v=parseInt(hex.slice(1),16),f=x=>Math.round(x+(255-x)*a);
+  return '#'+[f(v>>16&255),f(v>>8&255),f(v&255)].map(x=>x.toString(16).padStart(2,'0')).join('');}
+const dot = (c,s=9)=>`<span class="dot" style="width:${s}px;height:${s}px;background:${light(c)}"></span>`;
+const fairBadge = v => `<span class="badge m" style="background:${v>=5?'var(--warnT)':'var(--surf3)'};
+  color:${v>=5?'var(--warn)':'var(--dim)'}">${v>=5?'거품 ':''}${p1(v)}</span>`;
+const svg = (d,sz=20,c='var(--dim)',w=1.6)=>`<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none"
+  stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+const iBack=`${svg('M15 5l-7 7 7 7',22,'var(--text)',1.8)}`;
+const iMinus=svg('M5 12h14',18,'var(--dim)',2), iPlus=svg('M12 5v14M5 12h14',18,'var(--text)',2);
+
+/* ---- 토스트 ---- */
+let toasts=[];
+function showToast(html,ms=4200){
+  const id='t'+Math.random().toString(36).slice(2);
+  toasts.push({id,html}); if(toasts.length>3) toasts.shift();
+  renderToasts(); setTimeout(()=>{toasts=toasts.filter(t=>t.id!==id);renderToasts();},ms);
+}
+function renderToasts(){ toastEl.innerHTML = toasts.map(t=>`<div class="toast">${t.html}</div>`).join(''); }
+function pushFill(f){
+  showToast(`<div style="display:flex;align-items:center;gap:10px">
+    <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
+      justify-content:center;background:${f.side==='buy'?'var(--upT)':'var(--downT)'}">
+      ${svg('M4 12.5l5 5L20 6.5',17,f.side==='buy'?'var(--up)':'var(--down)',2)}</div>
+    <div class="grow"><div style="font-size:13px;font-weight:700">${f.side==='buy'?'매수':'매도'} 체결 · ${esc(f.name)}${f.tag?' ('+f.tag+')':''}</div>
+      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${n(f.price)} × ${n(f.qty)}주 · 수수료 ${n(f.fee)}</div></div>
+    <div class="m" style="font-size:15px;font-weight:700;color:${f.side==='buy'?'var(--up)':'var(--down)'}">
+      ${f.side==='buy'?'−':'+'}${n(f.amount)}</div></div>`);
+}
+function pushSalary(b){
+  const mine=(b&&b.mine&&b.mine.length)? b.mine.join(' · ') : '보유 주식이 없어 배정 없음';
+  showToast(`<div style="display:flex;align-items:center;gap:10px">
+    <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
+      justify-content:center;background:var(--accT)">${svg('M3 8a2 2 0 012-2h13a1 1 0 011 1v2M3 8v9a2 2 0 002 2h14a1 1 0 001-1v-3M3 8h17M21 11h-4a2 2 0 000 4h4',18,'var(--acc)',1.5)}</div>
+    <div class="grow"><div style="font-size:13px;font-weight:700">월급 입금 · ${G.salaryCount}분차</div>
+      <div style="font-size:11px;color:var(--dim2);margin-top:2px">무상증자 ${b?(b.rate*100).toFixed(1)+'%':'—'} · ${esc(mine)}</div></div>
+    <div class="m" style="font-size:16px;font-weight:700;color:var(--acc)">+${n(G.cfg.salaryAmount)}</div></div>`);
+}
+function toastErr(e){ showToast(`<div style="display:flex;gap:10px;align-items:center">
+  <div style="width:32px;height:32px;border-radius:10px;background:var(--warnT);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center">${svg('M12 8v5M12 16.4v.2M10.3 4.3L2.8 17.5A1.5 1.5 0 004.1 20h15.8a1.5 1.5 0 001.3-2.5L13.7 4.3a1.5 1.5 0 00-2.6 0z',17,'var(--warn)',1.6)}</div>
+  <div class="grow"><div style="font-size:13px;font-weight:700">${esc(e.message)}</div>
+  <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${esc(e.code)}</div></div></div>`,3200); }
+
+/* ---- 1. 방 만들기 ---- */
+function vSetup(){
+  const seg=(id,opts,cur)=>`<div class="seg">${opts.map(o=>
+    `<button data-act="set" data-k="${id}" data-v="${o.v}" aria-pressed="${o.v==cur}">${o.t}</button>`).join('')}</div>`;
+  return `<div class="hdr"><h1>방 만들기</h1><span class="m" style="font-size:11px;color:var(--dim2)">더미 API</span></div>
+  <div class="pad" style="padding-top:20px;padding-bottom:20px;display:flex;flex-direction:column;gap:22px">
+    <div><div class="lbl">거래 종목 <span style="color:var(--acc)">${U.codes.length} / 10</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${POOL.map(s=>{const on=U.codes.includes(s.code);
+        return `<button data-act="tog" data-v="${s.code}" style="display:flex;align-items:center;gap:7px;height:44px;
+          padding:0 12px;border-radius:10px;border:1px solid ${on?'var(--acc)':'var(--line)'};
+          background:${on?'var(--accT)':'transparent'};color:${on?'var(--text)':'var(--dim)'}">
+          ${dot(s.color,8)}<span style="font-size:13px;font-weight:${on?600:500}">${s.name}</span>
+          <span class="m" style="font-size:11px;color:var(--dim2)">${n(s.initialPrice)}</span></button>`;}).join('')}</div>
+      <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+        <span>2개 이상 골라야 시작할 수 있어요. 서버에서는 <span class="m">GET /api/meta</span> 의 stockPool 을 그대로 씁니다.</span></div></div>
+    <div><div class="lbl">정규장 길이</div>${seg('dur',[{v:5,t:'5분'},{v:10,t:'10분'},{v:15,t:'15분'}],U.dur)}</div>
+    <div><div class="lbl">개장 공모</div>${seg('ipoSec',[{v:0,t:'없음'},{v:30,t:'30초'},{v:45,t:'45초'}],U.ipoSec)}
+      <div class="hint">${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',16,'var(--warn)',1.5)}
+        <span>전원 <b style="color:var(--text)">주식 0주</b>로 시작합니다. 청약하지 않으면 무상증자를 한 주도 못 받아 수익률이 0%에 고정돼요.</span></div></div>
+    <div><div class="lbl">1인당 시작 현금</div>${seg('seed',[{v:500000,t:'50만'},{v:1000000,t:'100만'},{v:5000000,t:'500만'}],U.seed)}</div>
+    <div><div class="lbl">봇</div>${seg('bots',[{v:10,t:'10'},{v:30,t:'30'},{v:60,t:'60'}],U.bots)}
+      <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+        <span>사람은 나 + 친구 5명(시뮬)입니다. 봇은 시상 순위에서 빠집니다.</span></div></div>
+    <div><div class="lbl">진행 속도 <span style="color:var(--dim2);font-weight:500">— 데모용</span></div>
+      ${seg('speed',[{v:1,t:'1×'},{v:4,t:'4×'},{v:12,t:'12×'}],U.speed)}</div>
+  </div>
+  <div class="sticky"><button class="cta" data-act="start" ${U.codes.length<2?'disabled':''}>게임 시작</button>
+    <div style="text-align:center;font-size:11px;color:var(--dim2);margin-top:10px">
+      월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${CFG.inflationPerMin*100}%/분 · 무상증자 최대 ${CFG.maxBonusRate*100}% · ${CFG.lotSize}주 단위 · 수수료 ${(CFG.feeRate*100).toFixed(2)}%</div></div>`;
+}
+
+/* ---- 2. 개장 공모 ---- */
+function vIpo(snap){
+  const s=snap.stocks.find(x=>x.code===U.ipoCode)||snap.stocks[0];
+  if(!U.ipoPrice) U.ipoPrice=roundTick(s.last*1.05);
+  if(!U.ipoQty) U.ipoQty=floorLot(G.cfg.seedMoney*0.15/U.ipoPrice)||CFG.lotSize;
+  const mineBy={}; for(const st of G.stocks) mineBy[st.code]=st.ipoBids.filter(b=>b.playerId==='me')
+    .reduce((a,b)=>a+b.qty,0);
+  const reserved=G.cfg.seedMoney-G.me.cash;
+  return `<div style="padding:16px 16px 0;border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="grow" style="font-size:15px;font-weight:600">개장 공모</div>
+      <span class="badge" style="background:var(--warnT);color:var(--warn);letter-spacing:.06em">단일가 배정</span></div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <div class="m" style="font-size:40px;font-weight:700;color:var(--warn)">${snap.ipoRemainSec}</div>
+      <div style="font-size:14px;color:var(--dim)">초 뒤 마감</div><div class="grow"></div>
+      <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(G.me.cash)}</div></div>
+    <div class="bar" style="margin:12px 0 16px"><i style="width:${(1-snap.ipoRemainSec/G.cfg.ipoSec)*100}%"></i></div></div>
+  <div class="pad" style="padding-top:16px">
+    <div style="display:flex;gap:10px;background:var(--warnT);border:1px solid rgba(245,165,36,.35);
+      border-radius:14px;padding:14px 16px">
+      <div style="flex-shrink:0;margin-top:1px">${svg('M13 3L5 14h6l-1 7 8-11h-6l1-7z',20,'var(--warn)',1.5)}</div>
+      <div><div style="font-size:14px;font-weight:700;color:var(--warn)">청약하지 않으면 주식 0주로 시작합니다</div>
+      <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:5px">주식이 없으면 매분 들어오는
+        <b style="color:var(--text)">무상증자를 한 주도 받지 못하고</b>, 인플레로 오르는 값도 못 탑니다.</div></div></div></div>
+  <div style="display:flex;align-items:center;padding:22px 16px 10px">
+    <div class="grow" style="font-size:14px;font-weight:700">종목별 청약 현황</div>
+    <div class="m" style="font-size:11px;color:var(--dim2)">예치 ${n(reserved)}</div></div>
+  <div style="border-top:1px solid var(--line)">${snap.stocks.map(st=>{
+    const rate=st.float? st.ipoDemand/st.float : 0, mine=mineBy[st.code]||0;
+    return `<button data-act="ipoPick" data-v="${st.code}" class="row" style="height:64px;width:100%;text-align:left;
+      background:${st.code===U.ipoCode?'var(--accT)':'transparent'};border-left:${st.code===U.ipoCode?'2px solid var(--acc)':'2px solid transparent'}">
+      ${dot(st.color)}
+      <div class="grow"><div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:15px;font-weight:600">${st.name}</span>
+        ${mine?`<span class="badge m" style="background:var(--acc);color:var(--ink)">내 ${n(mine)}주</span>`:''}</div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">초기가 ${n(st.open)} · 발행 ${n(st.float)}주</div></div>
+      <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(st.ipoDemand)}주</div>
+        <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${rate>=1?'var(--up)':'var(--dim2)'}">청약률 ${rate.toFixed(1)}배</div></div>
+    </button>`;}).join('')}</div>
+  <div class="sticky">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      ${dot(s.color)}<div class="grow" style="font-size:15px;font-weight:700">${s.name} 청약</div>
+      <div class="m" style="font-size:11px;color:var(--dim2)">호가 ${tickSize(U.ipoPrice)}원 · ${CFG.lotSize}주 단위</div></div>
+    <div class="step"><span style="font-size:11px;color:var(--dim2);width:44px">가격</span>
+      <span class="v m">${n(U.ipoPrice)}</span>
+      <button data-act="ipoP" data-v="-1" aria-label="가격 내림">${iMinus}</button>
+      <button data-act="ipoP" data-v="1" aria-label="가격 올림">${iPlus}</button></div>
+    <div class="step" style="margin-top:8px"><span style="font-size:11px;color:var(--dim2);width:44px">수량</span>
+      <span class="v m">${n(U.ipoQty)}</span>
+      <button data-act="ipoQ" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
+      <button data-act="ipoQ" data-v="1" aria-label="수량 늘림">${iPlus}</button></div>
+    <div style="display:flex;margin:14px 2px 12px"><div class="grow" style="font-size:12px;color:var(--dim2)">예치 증거금</div>
+      <div class="m" style="font-size:14px;font-weight:700">${n(U.ipoPrice*U.ipoQty)}원</div></div>
+    <button class="cta" data-act="ipoBid">청약하기</button></div>`;
+}
+
+/* ---- 3. 전체 시황 ---- */
+function vMarket(snap,me){
+  const sorted=[...snap.stocks].sort((a,b)=> U.sort==='chg'? b.changePct-a.changePct : b.vsFairPct-a.vsFairPct);
+  const myRank=snap.ranking.find(r=>r.id==='me');
+  const bonusQty = G.stocks.reduce((a,s)=>a+s.issued,0);
+  return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="grow" style="font-size:15px;font-weight:600">동문회 챌린지</div>
+      <span class="badge" style="background:var(--upT);color:var(--up);gap:5px;letter-spacing:.06em">
+        <span class="dot" style="width:6px;height:6px;background:var(--up)"></span>LIVE</span>
+      <span class="m" style="font-size:11px;color:var(--dim2)">더미 400ms</span></div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
+      <div class="m" style="font-size:34px;font-weight:700">${clk(snap.remainSec)}</div>
+      <div style="font-size:13px;color:var(--dim)">남음</div><div class="grow"></div>
+      <div style="font-size:12px;color:var(--dim2)">사람 ${snap.humanCount} · 봇 ${snap.playerCount-snap.humanCount}</div></div>
+    <div class="bar" style="margin:12px 0 10px"><i style="width:${snap.elapsedSec/(G.cfg.durationMin*60)*100}%"></i></div>
+    <div style="display:flex;align-items:center;gap:6px;padding-bottom:10px">
+      <span style="font-size:11px;color:var(--dim2)">속도</span>
+      ${[1,4,12].map(v=>`<button data-act="set" data-k="speed" data-v="${v}" aria-pressed="${U.speed===v}"
+        class="m" style="height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;
+        background:${U.speed===v?'var(--surf3)':'transparent'};border:1px solid ${U.speed===v?'var(--line2)':'var(--line)'};
+        color:${U.speed===v?'var(--text)':'var(--dim2)'}">${v}×</button>`).join('')}
+      <div class="grow"></div>
+      <button data-act="go" data-v="result" class="m" style="height:32px;padding:0 12px;border-radius:8px;
+        border:1px solid var(--line);color:var(--dim2);font-size:12px">지금 마감</button></div></div>
+
+  <div class="pad" style="padding-top:14px">
+    <div class="card" style="padding:14px 16px 0">
+      <div style="display:flex;align-items:center"><div class="grow lbl" style="margin:0">내 총자산</div>
+        <span class="badge m" style="background:var(--accT);color:var(--acc)">${myRank?myRank.rank:'-'}위 / ${snap.humanCount}명</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
+        <div class="m" style="font-size:28px;font-weight:700">${n(me.nav)}</div>
+        <div style="font-size:14px;color:var(--dim)">원</div></div>
+      <div style="display:flex;align-items:baseline;gap:7px;margin-top:3px">
+        <div class="m" style="font-size:13px;font-weight:600;color:${cl(me.nav-me.invested)}">
+          ${sg(me.nav-me.invested)} (${pc(me.nav/me.invested*100-100)})</div>
+        <div style="font-size:11px;color:var(--dim2)">누적 투입 ${n(me.invested)} 대비</div></div>
+      <div style="height:1px;background:var(--line);margin-top:14px"></div>
+      <div style="display:flex;flex-wrap:wrap">
+        ${[['현금',n(me.cash),'var(--text)'],['묶인 현금',n(me.lockedCash),'var(--dim)'],
+           ['평가금액',n(me.nav-me.cash-me.lockedCash),'var(--text)'],['실현손익',sg(me.realized),cl(me.realized)]]
+          .map(([k,v,c])=>`<div style="width:50%;padding:11px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
+            <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
+      <div style="height:1px;background:var(--line)"></div>
+      <div style="display:flex;align-items:center;padding:12px 0 10px">
+        <div class="grow lbl" style="margin:0">분당 정산 · ${G.salaryCount}회</div>
+        <span class="badge m" style="background:var(--surf3);color:var(--dim)">다음 ${clk(G.cfg.salaryIntervalSec-(snap.elapsedSec%G.cfg.salaryIntervalSec))}</span></div>
+      <div style="display:flex;gap:8px;padding-bottom:14px">
+        <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
+          <div style="font-size:11px;color:var(--dim2)">월급 · ${n(G.cfg.salaryAmount)}/분</div>
+          <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">+${n(me.salaryTotal)}</div></div>
+        <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
+          <div style="font-size:11px;color:var(--dim2)">내 보유 주식</div>
+          <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">${n(me.holdings.reduce((a,h)=>a+h.qty,0))}주</div></div></div>
+    </div></div>
+
+  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="grow" style="font-size:14px;font-weight:700">전체 종목 <span style="color:var(--dim2);font-weight:500">${snap.stocks.length}</span></div>
+      ${[['chg','등락률순'],['fair','괴리율순']].map(([k,t])=>`<button data-act="set" data-k="sort" data-v="${k}"
+        aria-pressed="${U.sort===k}" style="height:32px;padding:0 10px;border-radius:8px;font-size:11px;font-weight:600;
+        background:${U.sort===k?'var(--surf3)':'transparent'};border:1px solid ${U.sort===k?'var(--line2)':'var(--line)'};
+        color:${U.sort===k?'var(--text)':'var(--dim2)'}">${t}</button>`).join('')}</div>
+    <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+      <span>인플레로 적정가가 분당 ${G.cfg.inflationPerMin*100}%씩 오릅니다. 전 종목이 상승이라 등락률만으로는 판단이 안 돼요 — 괴리율을 같이 보세요.</span></div></div>
+  <div style="border-top:1px solid var(--line)">${sorted.map(s=>`
+    <button data-act="stock" data-v="${s.code}" class="row" style="height:66px;width:100%;text-align:left">
+      ${dot(s.color)}
+      <div class="grow"><div style="font-size:15px;font-weight:600">${s.name}</div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">적정 ${n(s.fair)}</div></div>
+      ${fairBadge(s.vsFairPct)}
+      <div class="rt" style="width:84px"><div class="m" style="font-size:16px;font-weight:700">${n(s.last)}</div>
+        <div class="m" style="font-size:12px;font-weight:600;margin-top:3px;color:${cl(s.changePct)}">${pc(s.changePct)}</div></div>
+    </button>`).join('')}</div>
+
+  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+    <div style="font-size:14px;font-weight:700">사람 순위 <span style="color:var(--dim2);font-weight:500;font-size:11px">봇 제외 · 누적 투입 대비</span></div></div>
+  <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>{const me2=p.id==='me';
+    return `<div class="row" style="height:56px;background:${me2?'var(--accT)':'transparent'};
+      border-left:${me2?'2px solid var(--acc)':'2px solid transparent'}">
+      <div class="m" style="width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+        font-size:13px;font-weight:700;background:${p.rank===1?'var(--acc)':'var(--surf3)'};
+        color:${p.rank===1?'var(--ink)':'var(--dim)'}">${p.rank}</div>
+      <div class="grow" style="display:flex;align-items:center;gap:7px">
+        <span style="font-size:14px;font-weight:${me2?700:500}">${esc(p.name)}</span>
+        ${me2?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div>
+      <div class="rt"><div class="m" style="font-size:14px;font-weight:600">${n(p.nav)}</div>
+        <div class="m" style="font-size:11px;font-weight:600;margin-top:1px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${pc(p.pnlPct)}</div></div>
+    </div>`;}).join('')}</div>
+  <div style="height:24px"></div>`;
+}
+</script>
+
+<script>
+/* ---- 4. 개별 종목 ---- */
+function vStock(snap,me){
+  const s=snap.stocks.find(x=>x.code===U.code)||snap.stocks[0];
+  if(!U.price) U.price=s.last;
+  const hold=me.holdings.find(h=>h.code===s.code);
+  const myOrders=me.openOrders.filter(o=>o.code===s.code);
+  const tick=tickSize(s.last);
+  const maxBuy=floorLot(me.cash/((U.market?s.last:U.price)*(1+CFG.feeRate)));
+  const amt=(U.market?s.last:U.price)*U.qty;
+  const mineAt={}; for(const o of myOrders) mineAt[o.price]=(mineAt[o.price]||0)+o.qty;
+  const maxQ=Math.max(1,...s.depth.bids.map(d=>d.qty),...s.depth.asks.map(d=>d.qty));
+  const qmap=arr=>Object.fromEntries(arr.map(d=>[d.price,d.qty]));
+  const ask=qmap(s.depth.asks), bid=qmap(s.depth.bids);
+  const priceCell=(p,side,best)=>`<div class="pcell" style="background:${best?'var(--upT)':'var(--surf)'};
+      border-left:1px solid ${best?'var(--up)':'var(--line)'}">
+      <div class="m" style="font-size:14px;font-weight:${best?700:600};color:${side==='a'?'var(--down)':'var(--up)'}">${n(p)}</div>
+      <div class="m" style="font-size:9px;color:var(--dim2)">${pc((p/s.open-1)*100)}</div></div>`;
+  let ladder='';
+  for(let i=10;i>=1;i--){ const p=s.last+i*tick, q=ask[p];
+    ladder+=`<button data-act="px" data-v="${p}" class="depthrow" style="width:100%;text-align:left">
+      <span class="qcell a">${q?`<span class="qbar" style="right:0;width:${q/maxQ*100}%;background:var(--downT)"></span>
+        <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}</span>
+      ${priceCell(p,'a',false)}<span class="qcell b"></span></button>`; }
+  ladder+=`<div style="display:flex;align-items:center;justify-content:center;gap:8px;height:28px;
+    background:var(--surf2);border-bottom:1px solid var(--line)">
+    <span style="font-size:10px;color:var(--dim2)">스프레드</span>
+    <span class="m" style="font-size:11px;font-weight:600;color:var(--dim)">${
+      s.depth.asks.length&&s.depth.bids.length? n(s.depth.asks[0].price-s.depth.bids[0].price)+'원':'—'}</span></div>`;
+  for(let i=0;i<10;i++){ const p=s.last-i*tick; if(p<=0) break; const q=bid[p], mine=mineAt[p];
+    ladder+=`<button data-act="px" data-v="${p}" class="depthrow" style="width:100%;text-align:left">
+      <span class="qcell a"></span>${priceCell(p,'b',i===0)}
+      <span class="qcell b">${q?`<span class="qbar" style="left:0;width:${q/maxQ*100}%;background:var(--upT)"></span>
+        <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}
+        ${mine?`<span class="badge m" style="position:relative;background:var(--acc);color:var(--ink)">내 ${n(mine)}</span>`:''}</span></button>`; }
+
+  const fills=G.tape.filter(t=>t.code===s.code).slice(-14).reverse();
+  const body = U.tab==='호가' ? `
+    <div style="display:flex;align-items:center;height:34px;padding:8px 16px 0">
+      <span style="flex:1;text-align:right;padding-right:12px;font-size:10px;color:var(--dim2);font-weight:600">매도 잔량</span>
+      <span style="flex:0 0 104px;text-align:center;font-size:10px;color:var(--dim2);font-weight:600">호가 10단계</span>
+      <span style="flex:1;padding-left:12px;font-size:10px;color:var(--dim2);font-weight:600">매수 잔량</span></div>
+    <div class="pad" style="border-top:1px solid var(--line)">${ladder}</div>
+    <div class="pad"><div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+      <span>빈 칸은 그 가격에 주문이 없다는 뜻입니다. 호가를 누르면 주문 가격에 들어갑니다.</span></div></div>`
+  : U.tab==='차트' ? `
+    <div class="pad" style="padding-top:14px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:2px;background:var(--up)"></span>
+          <span style="font-size:11px;color:var(--dim)">체결가</span></span>
+        <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed var(--warn)"></span>
+          <span style="font-size:11px;color:var(--dim)">적정가</span></span>
+        <span class="grow"></span><span class="m" style="font-size:10px;color:var(--dim2)">1초 1점</span></div>
+      <canvas id="chart"></canvas>
+      <div class="hint">${svg('M12 21a9 9 0 100-18 9 9 0 000 18zM12 11v5M12 7.6v.2',16,'var(--dim2)',1.5)}
+        <span>두 선의 간격이 거품의 크기입니다. 지금은 적정가보다 ${p1(s.vsFairPct)}.</span></div></div>`
+  : `<div style="border-top:1px solid var(--line);margin-top:12px">${fills.length?fills.map(t=>`
+      <div class="row" style="height:40px"><span class="m" style="width:52px;font-size:11px;color:var(--dim2)">+${clk(t.t)}</span>
+        <span class="grow m" style="font-size:13px;font-weight:600;color:${t.side==='buy'?'var(--up)':'var(--down)'}">${n(t.price)}</span>
+        <span class="m" style="width:70px;text-align:right;font-size:12px;color:var(--dim)">${n(t.qty)}주</span>
+        <span style="width:34px;text-align:right;font-size:11px;font-weight:600;color:${t.side==='buy'?'var(--up)':'var(--down)'}">${t.side==='buy'?'매수':'매도'}</span></div>`).join('')
+      :`<div style="padding:28px 16px;text-align:center;font-size:12px;color:var(--dim2)">아직 체결이 없습니다</div>`}</div>`;
+
+  return `<div class="hdr"><button class="iconbtn" data-act="go" data-v="market" aria-label="뒤로">${iBack}</button>
+    <h1>${dot(s.color)}${s.name}</h1>
+    <span class="m" style="font-size:14px;font-weight:700;color:var(--acc)">${clk(snap.remainSec)}</span></div>
+  <div style="display:flex;align-items:flex-end;gap:12px;padding:16px 16px 14px">
+    <div class="grow">
+      <div style="display:flex;align-items:baseline;gap:6px">
+        <div class="m" style="font-size:32px;font-weight:700;color:${cl(s.changePct)}">${n(s.last)}</div>
+        <div style="font-size:14px;color:var(--dim)">원</div></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        <span class="m" style="font-size:14px;font-weight:600;color:${cl(s.changePct)}">${sg(s.last-s.open)}</span>
+        <span class="m" style="font-size:14px;font-weight:600;color:${cl(s.changePct)}">${pc(s.changePct)}</span>
+        <span class="m" style="font-size:11px;color:var(--dim2)">시초 ${n(s.open)}</span></div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:8px">${fairBadge(s.vsFairPct)}
+        <span class="m" style="font-size:11px;color:var(--dim2)">적정가 ${n(s.fair)}</span></div></div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${[['고가',n(s.high),'var(--up)'],['저가',n(s.low),'var(--down)'],['거래량',n(s.volume)+'주','var(--text)']]
+        .map(([k,v,c])=>`<div class="rt"><div style="font-size:10px;color:var(--dim2)">${k}</div>
+          <div class="m" style="font-size:12px;font-weight:600;color:${c};margin-top:2px">${v}</div></div>`).join('')}</div></div>
+  <div class="tabs">${['호가','차트','체결'].map(t=>`<button data-act="set" data-k="tab" data-v="${t}"
+    aria-pressed="${U.tab===t}">${t}</button>`).join('')}</div>
+  ${body}
+  ${myOrders.length?`<div class="pad" style="padding-top:12px">${myOrders.map(o=>`
+    <div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 12px 12px 16px;margin-bottom:8px">
+      <div class="grow"><div style="display:flex;align-items:center;gap:6px">
+        <span class="badge" style="background:${o.side==='buy'?'var(--upT)':'var(--downT)'};color:${o.side==='buy'?'var(--up)':'var(--down)'}">${o.side==='buy'?'매수':'매도'}</span>
+        <span class="m" style="font-size:13px;font-weight:600">${n(o.price)} × ${n(o.qty)}주</span></div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">미체결 · 묶인 현금 ${n(o.side==='buy'?o.price*o.qty:0)}</div></div>
+      <button data-act="cancel" data-v="${o.id}" style="height:44px;padding:0 14px;border-radius:10px;
+        border:1px solid var(--line2);color:var(--dim);font-size:13px;font-weight:600">취소</button></div>`).join('')}</div>`:''}
+  ${hold?`<div class="pad" style="padding-top:4px"><div class="card" style="display:flex;align-items:center;gap:12px;padding:14px 16px">
+    <div><div style="font-size:11px;color:var(--dim2)">내 보유</div>
+      <div class="m" style="font-size:14px;font-weight:600;margin-top:3px">${n(hold.qty)}주 · 평단 ${n(hold.avgPrice)}</div></div>
+    <div class="grow"></div><div class="rt"><div style="font-size:11px;color:var(--dim2)">평가손익</div>
+      <div class="m" style="font-size:14px;font-weight:700;margin-top:3px;color:${cl(hold.pnl)}">${sg(hold.pnl)} (${pc(hold.pnlPct)})</div></div></div></div>`:''}
+  <div style="height:12px"></div>
+  <div class="sticky">
+    <div class="seg" style="margin-bottom:12px">
+      <button data-act="set" data-k="market" data-v="0" aria-pressed="${!U.market}">지정가</button>
+      <button data-act="set" data-k="market" data-v="1" aria-pressed="${U.market}">시장가</button></div>
+    <div class="step"><span style="font-size:11px;color:var(--dim2);width:32px">가격</span>
+      <span class="v m" style="color:${U.market?'var(--dim2)':'var(--text)'}">${U.market?'시장가':n(U.price)}</span>
+      <button data-act="p" data-v="-1" aria-label="가격 내림" ${U.market?'disabled':''}>${iMinus}</button>
+      <button data-act="p" data-v="1" aria-label="가격 올림" ${U.market?'disabled':''}>${iPlus}</button></div>
+    <div class="step" style="margin-top:8px"><span style="font-size:11px;color:var(--dim2);width:32px">수량</span>
+      <span class="v m">${n(U.qty)}</span>
+      <button data-act="q" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
+      <button data-act="q" data-v="1" aria-label="수량 늘림">${iPlus}</button></div>
+    <div class="chips" style="margin-top:8px">
+      ${[10,25,50].map(r=>`<button data-act="ratio" data-v="${r}" class="m">${r}%</button>`).join('')}
+      <button data-act="ratio" data-v="100" class="m" style="flex:1.5">최대 ${n(maxBuy)}</button></div>
+    <div style="display:flex;margin:14px 2px 8px"><span class="grow" style="font-size:12px;color:var(--dim2)">주문금액</span>
+      <span class="m" style="font-size:14px;font-weight:700">${n(amt)}원</span></div>
+    <div style="display:flex;margin:0 2px 14px"><span class="grow" style="font-size:12px;color:var(--dim2)">주문가능</span>
+      <span class="m" style="font-size:12px;color:var(--dim)">현금 ${n(me.cash)}원 · 최대 ${n(maxBuy)}주</span></div>
+    <div style="display:flex;gap:10px">
+      <button data-act="order" data-v="sell" style="flex:1;height:54px;border-radius:13px;background:var(--downT);
+        border:1px solid var(--down);color:var(--down);font-size:16px;font-weight:700">매도</button>
+      <button data-act="order" data-v="buy" style="flex:1;height:54px;border-radius:13px;background:var(--up);
+        color:#fff;font-size:16px;font-weight:700">매수</button></div></div>`;
+}
+
+function drawChart(){
+  const c=document.getElementById('chart'); if(!c) return;
+  const s=G.stocks.find(x=>x.code===U.code); if(!s||!s.history.length) return;
+  const dpr=window.devicePixelRatio||1, w=c.clientWidth, h=200;
+  c.width=w*dpr; c.height=h*dpr; const g=c.getContext('2d'); g.scale(dpr,dpr);
+  g.clearRect(0,0,w,h);
+  const hs=s.history, lo=Math.min(...hs.map(p=>Math.min(p.price,p.fair)))*0.99,
+        hi=Math.max(...hs.map(p=>Math.max(p.price,p.fair)))*1.01;
+  const X=i=>hs.length<2?0:i/(hs.length-1)*(w-46), Y=v=>(hi-v)/(hi-lo||1)*(h-24)+8;
+  g.strokeStyle='#2E3540'; g.lineWidth=1; g.beginPath();
+  g.moveTo(0,Y(s.open)); g.lineTo(w-46,Y(s.open)); g.stroke();
+  g.setLineDash([5,4]); g.strokeStyle='#F5A524'; g.lineWidth=1.6; g.beginPath();
+  hs.forEach((p,i)=>i?g.lineTo(X(i),Y(p.fair)):g.moveTo(X(i),Y(p.fair))); g.stroke();
+  g.setLineDash([]); g.strokeStyle='#FF4D5E'; g.lineWidth=1.8;
+  g.lineJoin='round'; g.beginPath();
+  hs.forEach((p,i)=>i?g.lineTo(X(i),Y(p.price)):g.moveTo(X(i),Y(p.price))); g.stroke();
+  g.font='600 10px "IBM Plex Mono",monospace'; g.textBaseline='middle';
+  const pill=(v,y,bg,fg)=>{const t=n(v),tw=g.measureText(t).width+10;
+    g.fillStyle=bg; g.beginPath(); g.roundRect(w-tw-2,y-9,tw,18,4); g.fill();
+    g.fillStyle=fg; g.fillText(t,w-tw+3,y);};
+  pill(s.last,Y(s.last),'#FF4D5E','#fff'); pill(Math.round(s.fair),Y(s.fair),'#F5A524','#0A0C10');
+}
+
+/* ---- 5. 결과 ---- */
+function vResult(snap,me){
+  const win=snap.ranking[0];
+  return `<div class="hdr"><h1>게임 종료</h1>
+    <span class="m" style="font-size:12px;color:var(--dim2)">${G.cfg.durationMin}분 · 사람 ${snap.humanCount} + 봇 ${snap.playerCount-snap.humanCount}</span></div>
+  <div class="pad" style="padding-top:20px">
+    <div class="card" style="border-color:var(--acc);border-radius:18px;padding:22px 20px;text-align:center">
+      <div style="display:flex;justify-content:center">${svg('M7 4h10v5a5 5 0 01-10 0V4zM7 6H4v1a3 3 0 003 3M17 6h3v1a3 3 0 01-3 3M9 20h6M12 14v6',32,'var(--acc)',1.5)}</div>
+      <div class="lbl" style="margin:10px 0 0">우승</div>
+      <div style="font-size:26px;font-weight:700;margin-top:4px">${esc(win.name)}</div>
+      <div style="display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:8px">
+        <span class="m" style="font-size:20px;font-weight:700">${n(win.nav)}원</span>
+        <span class="m" style="font-size:15px;font-weight:700;color:${cl(win.pnlPct)}">${pc(win.pnlPct)}</span></div></div></div>
+  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">사람 순위</div></div>
+  <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>{const m2=p.id==='me';
+    return `<div class="row" style="height:60px;background:${m2?'var(--accT)':'transparent'};
+      border-left:${m2?'2px solid var(--acc)':'2px solid transparent'}">
+      <div class="m" style="width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+        font-size:13px;font-weight:700;background:${p.rank===1?'var(--acc)':'var(--surf3)'};color:${p.rank===1?'var(--ink)':'var(--dim)'}">${p.rank}</div>
+      <div class="grow" style="display:flex;align-items:center;gap:7px"><span style="font-size:15px;font-weight:${m2?700:500}">${esc(p.name)}</span>
+        ${m2?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div>
+      <div class="rt"><div class="m" style="font-size:15px;font-weight:600">${n(p.nav)}</div>
+        <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${sg(p.pnl)} · ${pc(p.pnlPct)}</div></div></div>`;}).join('')}</div>
+  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">종목 결과</div></div>
+  <div style="border-top:1px solid var(--line)">${[...snap.stocks].sort((a,b)=>b.changePct-a.changePct).map(s=>`
+    <div class="row" style="height:64px">${dot(s.color)}
+      <div class="grow"><div style="font-size:14px;font-weight:600">${s.name}</div>
+        <div class="m" style="font-size:10px;color:var(--dim2);margin-top:3px;white-space:nowrap">시초 ${n(s.open)} · 고 ${n(s.high)} · 저 ${n(s.low)}</div></div>
+      <div class="rt"><div class="m" style="font-size:14px;font-weight:700">${n(s.last)}</div>
+        <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${cl(s.changePct)}">${pc(s.changePct)}</div></div>
+      <div class="rt" style="width:72px"><div class="m" style="font-size:10px;color:var(--dim2)">거래 ${n(s.volume)}</div>
+        <div class="m" style="font-size:10px;color:var(--dim2);margin-top:4px">발행 ${n(s.issued)}</div></div></div>`).join('')}</div>
+  <div class="sticky" style="display:flex;gap:10px">
+    <button class="ghost" style="width:120px;height:54px" data-act="go" data-v="setup">설정으로</button>
+    <button class="cta" style="flex:1;width:auto" data-act="again">같은 설정으로 다시</button></div>`;
+}
+
+/* ---- 라우터 · 루프 ---- */
+function go(v){ U.view=v; if(v==='stock'){U.tab='호가';} view.scrollTop=0; render(); }
+function render(){
+  const snap=API.snapshot(), me = G.me ? API.me() : null;
+  const st=view.scrollTop;
+  view.innerHTML = U.view==='setup'? vSetup()
+    : U.view==='ipo'? vIpo(snap)
+    : U.view==='stock'? vStock(snap,me)
+    : U.view==='result'? vResult(snap,me)
+    : vMarket(snap,me);
+  view.scrollTop=st;
+  if(U.view==='stock'&&U.tab==='차트') drawChart();
+}
+let last=performance.now();
+setInterval(()=>{
+  const now=performance.now(); const dt=Math.min(1,(now-last)/1000)*U.speed; last=now;
+  if(G.phase==='ipo'||G.phase==='trading'){
+    tick(dt);
+    if(G.phase==='ipo'&&U.view!=='ipo') U.view='ipo';
+    if(G.phase==='ended'&&U.view!=='result') { U.view='result'; }
+    render();
+  }
+},250);
+
+/* ---- 입력 ---- */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]'); if(!b||b.disabled) return;
+  const a=b.dataset.act, v=b.dataset.v, k=b.dataset.k;
+  const snap=API.snapshot(); const s=G.stocks.find(x=>x.code===U.code);
+  if(a==='set'){ const num=!isNaN(Number(v))&&k!=='tab'&&k!=='sort';
+    U[k]= k==='market'? v==='1' : (num? Number(v) : v);
+    if(k==='tab'&&v==='차트') setTimeout(drawChart,0); }
+  else if(a==='tog'){ U.codes = U.codes.includes(v)? U.codes.filter(c=>c!==v) : [...U.codes,v]; }
+  else if(a==='start'){ if(U.codes.length<2) return;
+    API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,seedMoney:U.seed,botCount:U.bots});
+    U.ipoPrice=0; U.ipoQty=0; U.ipoCode=U.codes[0]; go(G.phase==='ipo'?'ipo':'market'); return; }
+  else if(a==='ipoPick'){ U.ipoCode=v; U.ipoPrice=0; U.ipoQty=0; }
+  else if(a==='ipoP'){ U.ipoPrice=Math.max(tickSize(U.ipoPrice),roundTick(U.ipoPrice+Number(v)*tickSize(U.ipoPrice))); }
+  else if(a==='ipoQ'){ U.ipoQty=Math.max(CFG.lotSize,U.ipoQty+Number(v)*CFG.lotSize); }
+  else if(a==='ipoBid'){ const r=API.ipoBid(U.ipoCode,U.ipoPrice,U.ipoQty);
+    if(r.error) toastErr(r.error); else showToast(`<div style="font-size:13px;font-weight:700">청약 접수 · ${esc(G.stocks.find(x=>x.code===U.ipoCode).name)}</div>
+      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">${n(r.price)} × ${n(r.qty)}주 · 증거금 ${n(r.reserved)}원 예치</div>`,2600); }
+  else if(a==='stock'){ U.code=v; U.price=G.stocks.find(x=>x.code===v).last; U.qty=CFG.lotSize; go('stock'); return; }
+  else if(a==='go'){ if(v==='result'){ G.phase='ended'; } if(v==='setup'){ G.phase='lobby'; } go(v); return; }
+  else if(a==='again'){ API.createRoom({stockCodes:U.codes,durationMin:U.dur,ipoSec:U.ipoSec,seedMoney:U.seed,botCount:U.bots});
+    U.ipoPrice=0; U.ipoQty=0; go(G.phase==='ipo'?'ipo':'market'); return; }
+  else if(a==='px'){ U.price=Number(v); U.market=false; }
+  else if(a==='p'){ U.price=Math.max(tickSize(U.price),roundTick(U.price+Number(v)*tickSize(U.price))); }
+  else if(a==='q'){ U.qty=Math.max(CFG.lotSize,U.qty+Number(v)*CFG.lotSize); }
+  else if(a==='ratio'){ const me=API.me(); const px=U.market? s.last : U.price;
+    U.qty=Math.max(CFG.lotSize,floorLot(me.cash/(px*(1+CFG.feeRate))*Number(v)/100)); }
+  else if(a==='cancel'){ API.cancel(v); }
+  else if(a==='order'){ const r=API.order(U.code,v,U.market?null:U.price,U.qty,U.market);
+    if(r.error) toastErr(r.error);
+    else if(!r.filled&&!r.resting) toastErr({code:'NOT_FILLED',message:'체결도 등록도 되지 않았습니다'}); }
+  render();
+});
+render();
+</script>
