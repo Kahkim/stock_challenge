@@ -258,14 +258,20 @@ function measure(humans, newsDelayTicks = 8) {
 function judge(M) {
   const { humans, acc, better } = M;
   const r1 = (k) => acc[k].toFixed(1);
-  const gapText = (X) => `차이 ${X.gap.toFixed(2)} 가 표준오차의 2배(${(2 * X.se).toFixed(2)})에 못 미쳐 우열을 단정할 수 없다`;
+  // gap 이 음수면 '앞서야 할 쪽' 이 오히려 뒤진 것이다 — "우열을 단정할 수 없다" 로 뭉개지 않는다
+  const gapText = (X) => X.gap < 0
+    ? `오히려 ${(-X.gap).toFixed(2)}등 뒤진다 (표준오차의 2배 ${(2 * X.se).toFixed(2)})`
+    : `차이 ${X.gap.toFixed(2)} 가 표준오차의 2배(${(2 * X.se).toFixed(2)})에 못 미쳐 우열을 단정할 수 없다`;
   const N = better('news', 'hold'), F = better('fast', 'hold'), S = better('fast', 'slow');
   // 막 사기 계열은 "중앙값보다 아래" 이고 "유능한 참가자에 유의하게 진다" 를 둘 다 만족해야 한다
   const lower = (key) => {
     const X = better('smart', key);
     const ok = acc[key] > humans / 2 && X.significant;
+    const vsSmart = X.gap < 0
+      ? `유능(${r1('smart')}등)보다 ${(-X.gap).toFixed(2)}등 앞선다 (표준오차의 2배 ${(2 * X.se).toFixed(2)})`
+      : `유능(${r1('smart')}등)과 ${gapText(X)}`;
     const why = (acc[key] <= humans / 2 ? `중앙값(${humans / 2})보다 위` : '') +
-      (!X.significant ? `${acc[key] <= humans / 2 ? ' · ' : ''}유능(${r1('smart')}등)과 ${gapText(X)}` : '');
+      (!X.significant ? `${acc[key] <= humans / 2 ? ' · ' : ''}${vsSmart}` : '');
     return [ok, X, why];
   };
   const RD = lower('rand'), YL = lower('yolo'), DC = lower('dca'), CH = lower('churn');
