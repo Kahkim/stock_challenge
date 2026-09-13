@@ -56,7 +56,7 @@ function applyOverrides(cfg) {
   return cfg;
 }
 
-const HUMANS = Number(arg('humans', 36));   // 9전략 × 4명
+const HUMANS = Number(arg('humans', 40));   // 10전략 × 4명
 const BOTS = Number(arg('bots', 50));
 const NSTOCK = Number(arg('stocks', 6));
 const MINUTES = Number(arg('min', 15));
@@ -81,6 +81,8 @@ const STRATS = [
   // 가장 오른 종목에 넣는다. "막 사기" 와 달리 종목을 고르되, 현금을 놀리지도 않는다.
   // 막 사기가 이 전략까지 이기면 게임이 종목 선택이 아니라 투자 속도만 보상하는 것이다.
   { key: 'smart',  label: '상시 투자 + 뉴스 대응' },
+  // 가장 문자 그대로의 막 사기: 아무 종목 하나에 몰빵하고 월급도 거기 다 넣는다. 팔지 않는다.
+  { key: 'yolo',   label: '한 종목 몰빵 (무작위, 팔지 않음)' },
 ];
 const NGROUP = STRATS.length;
 const G = Object.fromEntries(STRATS.map((s, i) => [s.key, i]));
@@ -113,8 +115,18 @@ function oneRun(seed) {
       }
       continue;
     }
+    if (gp === G.yolo) {
+      // 몰빵: 아무 종목 하나에 현금 60% 를 지른다
+      const s = pickStock(), p = g.players.get(H[k]);
+      const px = Math.round(s.initialPrice * 1.05);
+      const q = Math.floor(p.cash * 0.6 / px / lot) * lot;
+      try { g.submitIpoBid(H[k], s.code, px, q); } catch (_) {}
+      p._yolo = s;
+      continue;
+    }
+    // 나머지는 전 종목에 화면 기본값(기준가의 105%)으로 청약한다
     for (const s of g.stocks) {
-      try { g.submitIpoBid(H[k], s.code, Math.round(s.initialPrice * 1.1), 150); } catch (_) {}
+      try { g.submitIpoBid(H[k], s.code, Math.round(s.initialPrice * 1.05), 150); } catch (_) {}
     }
   }
   const ipoTicks = Math.ceil(20 * 1000 / 250) + 5;
@@ -182,6 +194,7 @@ function oneRun(seed) {
       for (let k = 0; k < HUMANS; k++) {
         const gp = group(k);
         if (gp === G.rand) buy(H[k], pickStock(), 0.4);
+        else if (gp === G.yolo) { const s = g.players.get(H[k])._yolo; if (s) buy(H[k], s, 0.6); }
         else if (gp === G.churn) {
           const s = pickStock();
           if (hr() < 0.5) buy(H[k], s, 0.4); else sell(H[k], s, 0.5);
@@ -263,6 +276,11 @@ ok('churnBad',
    acc.churn > HUMANS / 2 && CS.significant,
    `막 사고팔기도 확실히 하위권 (${acc.churn.toFixed(1)}등)`,
    `막 사고팔기가 ${acc.churn.toFixed(1)}등 — 유능한 참가자(${acc.smart.toFixed(1)}등)에 확실히 지지 않는다`);
+const YS = better('smart', 'yolo');
+ok('yoloBad',
+   acc.yolo > HUMANS / 2 && YS.significant,
+   `한 종목 몰빵도 확실히 하위권 (${acc.yolo.toFixed(1)}등 · 편차 ±${sd(samples.yolo).toFixed(1)})`,
+   `한 종목 몰빵이 ${acc.yolo.toFixed(1)}등 (판마다 편차 ±${sd(samples.yolo).toFixed(1)}) — 유능한 참가자(${acc.smart.toFixed(1)}등)에 확실히 지지 않는다`);
 ok('smartTop', acc.smart <= HUMANS * 0.25,
    `유능한 참가자가 상위권 (${acc.smart.toFixed(1)}등)`,
    `유능한 참가자가 ${acc.smart.toFixed(1)}등 — 상위 25%(${HUMANS / 4}등) 밖이다`);
