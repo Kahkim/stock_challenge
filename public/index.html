@@ -343,7 +343,7 @@ const $ = s => document.querySelector(s);
 const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
 const U = { view:'home', codes:[], dur:15, ipoSec:45, seed:1000000, bots:30,
             name:'', joinCode:'', title:'',
-            code:null, tab:'호가', price:0, qty:0, market:false,
+            code:null, tab:'호가', qty:0, side:'buy',
             ipoCode:null, ipoPrice:0, ipoQty:0, sort:'chg', busy:false };
 
 const n  = v => Math.round(v).toLocaleString('en-US');
@@ -447,12 +447,12 @@ function onNotice(nt){
 
 /* 돌발뉴스. 판당 약 12건이라 화면을 막는 모달은 쓸 수 없다 — 토스트 + 상단 배너로 알린다.
    sign 과 impactPct 는 방향이 그대로 드러나므로 화면에 쓰지 않는다(헤드라인으로 판단하는 게 설계 의도).
-   즉시 체결되는 주문 버튼은 편의가 아니라 밸런스다 — 지정가를 현재가에 걸면 현금이 묶인 채 뒤처진다. */
+   바로 매수·매도는 편의가 아니라 밸런스다 — 뉴스에 소극적으로 대응하면 현금이 묶인 채 뒤처진다.
+   주문은 화면 어디서나 시장가 하나뿐이므로 여기서도 가격을 만들지 않는다. */
 function onNews(nw){
   const s = stockOf(nw.code); if(!s) return;
   const me = S.me;
   const tr = (me&&me.tradable.find(t=>t.code===nw.code)) || {maxBuyQty:0,maxSellQty:0};
-  const bpx=roundTick(s.last*1.02), spx=roundTick(s.last*0.98);
   const canSell = tr.maxSellQty>=CFG.lotSize;
   const canAct = !!me && S.snap && S.snap.phase==='trading';
   showToast(`<div style="display:flex;align-items:center;gap:9px">
@@ -467,11 +467,11 @@ function onNews(nw){
       <button data-act="newsSell" data-v="${nw.code}" ${canSell?'':'disabled'}
         style="flex:1;height:46px;border-radius:11px;background:${canSell?'var(--downT)':'transparent'};
         border:1px solid ${canSell?'var(--down)':'var(--line)'};color:${canSell?'var(--down)':'var(--dim2)'};
-        font-size:14px;font-weight:700">바로 매도 ${canSell?n(spx):''}</button>
+        font-size:14px;font-weight:700">바로 매도</button>
       <button data-act="newsBuy" data-v="${nw.code}"
         style="flex:1;height:46px;border-radius:11px;background:var(--up);color:#fff;
-        font-size:14px;font-weight:700">바로 매수 ${n(bpx)}</button></div>
-    <div style="font-size:10px;color:var(--dim2);margin-top:8px">한두 호가 위아래로 질러야 즉시 체결됩니다. 지정가를 현재가에 걸면 현금이 묶인 채 밀립니다.</div>`:''}`, 11000);
+        font-size:14px;font-weight:700">바로 매수</button></div>
+    <div style="font-size:10px;color:var(--dim2);margin-top:8px">보유 현금(또는 주식)의 절반으로 현재가에 즉시 체결합니다. 먼저 반응할수록 유리합니다.</div>`:''}`, 11000);
 }
 function newsBanner(snap){
   if(!snap.news.length) return '';
@@ -806,17 +806,21 @@ function vStock(snap,me){
   const s=stockOf(U.code)||snap.stocks[0];
   if(!s) return '';
   const hasMe=!!S.me, trading=snap.phase==='trading';
-  if(!U.price) U.price=s.last;
-  if(!U.qty)   U.qty=CFG.lotSize;
+  if(!U.qty) U.qty=CFG.lotSize;
   const hold=me.holdings.find(h=>h.code===s.code);
   const myOrders=me.openOrders.filter(o=>o.code===s.code);
   const tick=tickSize(s.last);
-  // 수량 상한은 서버가 계산해서 준다(me.tradable). 지정가가 현재가보다 높으면 그만큼 줄인다.
+  // 수량 상한은 서버가 계산해서 준다(me.tradable).
   const tr=me.tradable.find(t=>t.code===s.code)||{maxBuyQty:0,maxSellQty:0};
-  const px=U.market?s.last:U.price;
+  const px=s.last;                       // 시장가뿐이라 기준은 늘 현재가다
+  const buying=U.side!=='sell';
   const maxBuy=Math.min(tr.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate))));
   const maxSell=tr.maxSellQty;
-  const amt=px*U.qty;
+  // 비율 칩과 '최대' 는 고른 쪽만 본다 — 매수 한도로 매도를 시도하던 혼선을 없앤다.
+  const cap=buying?maxBuy:maxSell;
+  if(U.qty>cap) U.qty=cap;               // 방향을 바꾸면 수량도 그쪽 한도로 맞춘다
+  const fee=Math.floor(px*U.qty*CFG.feeRate);
+  const amt=buying? px*U.qty+fee : px*U.qty-fee;
   const mineAt={}; for(const o of myOrders) mineAt[o.price]=(mineAt[o.price]||0)+o.qty;
   const maxQ=Math.max(1,...s.depth.bids.map(d=>d.qty),...s.depth.asks.map(d=>d.qty));
   const qmap=arr=>Object.fromEntries(arr.map(d=>[d.price,d.qty]));
@@ -827,21 +831,21 @@ function vStock(snap,me){
       <div class="m" style="font-size:9px;color:var(--dim2)">${s.open?pc((p/s.open-1)*100):'—'}</div></div>`;
   let ladder='';
   for(let i=10;i>=1;i--){ const p=s.last+i*tick, q=ask[p];
-    ladder+=`<button data-act="px" data-v="${p}" class="depthrow" style="width:100%;text-align:left">
+    ladder+=`<div class="depthrow">
       <span class="qcell a">${q?`<span class="qbar" style="right:0;width:${q/maxQ*100}%;background:var(--downT)"></span>
         <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}</span>
-      ${priceCell(p,'a',false)}<span class="qcell b"></span></button>`; }
+      ${priceCell(p,'a',false)}<span class="qcell b"></span></div>`; }
   ladder+=`<div style="display:flex;align-items:center;justify-content:center;gap:8px;height:28px;
     background:var(--surf2);border-bottom:1px solid var(--line)">
     <span style="font-size:10px;color:var(--dim2)">스프레드</span>
     <span class="m" style="font-size:11px;font-weight:600;color:var(--dim)">${
       s.depth.asks.length&&s.depth.bids.length? n(s.depth.asks[0].price-s.depth.bids[0].price)+'원':'—'}</span></div>`;
   for(let i=0;i<10;i++){ const p=s.last-i*tick; if(p<=0) break; const q=bid[p], mine=mineAt[p];
-    ladder+=`<button data-act="px" data-v="${p}" class="depthrow" style="width:100%;text-align:left">
+    ladder+=`<div class="depthrow">
       <span class="qcell a"></span>${priceCell(p,'b',i===0)}
       <span class="qcell b">${q?`<span class="qbar" style="left:0;width:${q/maxQ*100}%;background:var(--upT)"></span>
         <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}
-        ${mine?`<span class="badge m" style="position:relative;background:var(--acc);color:var(--ink)">내 ${n(mine)}</span>`:''}</span></button>`; }
+        ${mine?`<span class="badge m" style="position:relative;background:var(--acc);color:var(--ink)">내 ${n(mine)}</span>`:''}</span></div>`; }
 
   const fills=(snap.tape||[]).filter(t=>t.code===s.code).slice(-14).reverse();
   const body = U.tab==='호가' ? `
@@ -851,7 +855,7 @@ function vStock(snap,me){
       <span style="flex:1;padding-left:12px;font-size:10px;color:var(--dim2);font-weight:600">매수 잔량</span></div>
     <div class="pad" style="border-top:1px solid var(--line)">${ladder}</div>
     <div class="pad"><div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-      <span>빈 칸은 그 가격에 주문이 없다는 뜻입니다. 호가를 누르면 주문 가격에 들어갑니다.</span></div></div>`
+      <span>빈 칸은 그 가격에 주문이 없다는 뜻입니다. 주문은 현재가로 바로 체결되므로, 잔량이 두꺼울수록 눌러도 가격이 덜 밀립니다.</span></div></div>`
   : U.tab==='차트' ? `
     <div class="pad" style="padding-top:14px">
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
@@ -917,28 +921,27 @@ function vStock(snap,me){
   <div style="height:12px"></div>
   ${(hasMe&&trading)?`<div class="sticky">
     <div class="seg" style="margin-bottom:12px">
-      <button data-act="set" data-k="market" data-v="0" aria-pressed="${!U.market}">지정가</button>
-      <button data-act="set" data-k="market" data-v="1" aria-pressed="${U.market}">시장가</button></div>
-    <div class="step"><span style="font-size:11px;color:var(--dim2);width:32px">가격</span>
-      <span class="v m" style="color:${U.market?'var(--dim2)':'var(--text)'}">${U.market?'시장가':n(U.price)}</span>
-      <button data-act="p" data-v="-1" aria-label="가격 내림" ${U.market?'disabled':''}>${iMinus}</button>
-      <button data-act="p" data-v="1" aria-label="가격 올림" ${U.market?'disabled':''}>${iPlus}</button></div>
-    <div class="step" style="margin-top:8px"><span style="font-size:11px;color:var(--dim2);width:32px">수량</span>
+      <button data-act="set" data-k="side" data-v="buy" aria-pressed="${buying}">매수</button>
+      <button data-act="set" data-k="side" data-v="sell" aria-pressed="${!buying}">매도</button></div>
+    <div class="step"><span style="font-size:11px;color:var(--dim2);width:32px">수량</span>
       <span class="v m">${n(U.qty)}</span>
       <button data-act="q" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
-      <button data-act="q" data-v="1" aria-label="수량 늘림">${iPlus}</button></div>
+      <button data-act="q" data-v="1" aria-label="수량 늘림" ${U.qty>=cap?'disabled':''}>${iPlus}</button></div>
     <div class="chips" style="margin-top:8px">
-      ${[10,25,50].map(r=>`<button data-act="ratio" data-v="${r}" class="m">${r}%</button>`).join('')}
-      <button data-act="ratio" data-v="100" class="m" style="flex:1.5">최대 ${n(maxBuy)}</button></div>
-    <div style="display:flex;margin:14px 2px 8px"><span class="grow" style="font-size:12px;color:var(--dim2)">주문금액</span>
+      ${[10,25,50].map(r=>`<button data-act="ratio" data-v="${r}" class="m" ${cap<CFG.lotSize?'disabled':''}>${r}%</button>`).join('')}
+      <button data-act="ratio" data-v="100" class="m" style="flex:1.5" ${cap<CFG.lotSize?'disabled':''}>최대 ${n(cap)}</button></div>
+    <div style="display:flex;margin:14px 2px 8px"><span class="grow" style="font-size:12px;color:var(--dim2)">
+      ${buying?'예상 지출':'예상 수령'} <span style="font-size:10px">(수수료 포함)</span></span>
       <span class="m" style="font-size:14px;font-weight:700">${n(amt)}원</span></div>
-    <div style="display:flex;margin:0 2px 14px"><span class="grow" style="font-size:12px;color:var(--dim2)">주문가능</span>
-      <span class="m" style="font-size:12px;color:var(--dim)">매수 ${n(maxBuy)}주 · 매도 ${n(maxSell)}주</span></div>
-    <div style="display:flex;gap:10px">
-      <button data-act="order" data-v="sell" style="flex:1;height:54px;border-radius:13px;background:var(--downT);
-        border:1px solid var(--down);color:var(--down);font-size:16px;font-weight:700">매도</button>
-      <button data-act="order" data-v="buy" style="flex:1;height:54px;border-radius:13px;background:var(--up);
-        color:#fff;font-size:16px;font-weight:700">매수</button></div></div>`:''}`;
+    <div style="display:flex;margin:0 2px 14px"><span class="grow" style="font-size:12px;color:var(--dim2)">
+      ${buying?'살 수 있는 수량':'팔 수 있는 수량'}</span>
+      <span class="m" style="font-size:12px;color:var(--dim)">${n(cap)}주</span></div>
+    <button data-act="order" ${U.qty<CFG.lotSize?'disabled':''} style="width:100%;height:54px;border-radius:13px;
+      font-size:16px;font-weight:700;${U.qty<CFG.lotSize
+        ? 'background:var(--surf3);color:var(--dim2)'
+        : buying? 'background:var(--up);color:#fff' : 'background:var(--downT);border:1px solid var(--down);color:var(--down)'}">
+      ${U.qty<CFG.lotSize ? (buying?'현금이 부족합니다':'팔 주식이 없습니다') : `${n(U.qty)}주 ${buying?'매수':'매도'}`}</button>
+    <div style="text-align:center;font-size:10px;color:var(--dim2);margin-top:8px">현재가로 즉시 체결됩니다</div></div>`:''}`;
 }
 
 /* 차트는 GET /api/rooms/{code}/chart 의 history 를 그린다 (1초에 한 점, 최대 1800점). */
@@ -1221,8 +1224,29 @@ async function busy(fn){
   finally{ U.busy=false; renderNow(); }
 }
 
+/** 지금 고른 방향(U.side)으로 낼 수 있는 최대 수량. 화면과 버튼이 같은 값을 본다. */
+function tradeCap(){
+  const me=S.me||EMPTY_ME, st=stockOf(U.code);
+  const t=me.tradable.find(x=>x.code===U.code)||{maxBuyQty:0,maxSellQty:0};
+  if(U.side==='sell') return t.maxSellQty;
+  if(!st) return 0;
+  return Math.min(t.maxBuyQty, floorLot(me.cash/(st.last*(1+CFG.feeRate))));
+}
+
 async function submitOrder(code,side,price,qty,market){
-  return api('POST', R('/orders'), {code, side, qty, price: market? 'market' : price});
+  const r = await api('POST', R('/orders'), {code, side, qty, price: market? 'market' : price});
+  // 시장가는 반대편 호가에 있는 만큼만 체결하고 남은 수량은 취소한다(IOC). 지정가가 없는
+  // 화면에서 수량이 조용히 줄어들면 참가자는 이유를 알 수 없으므로 그때만 따로 알린다.
+  if(market && r.filled>0 && r.filled<qty){
+    const st=stockOf(code);
+    showToast(`<div style="display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
+        justify-content:center;background:var(--warnT)">${svg(iInfo,18,'var(--warn)',1.6)}</div>
+      <div class="grow"><div style="font-size:13px;font-weight:700">${n(r.filled)}주만 체결됐습니다</div>
+        <div style="font-size:11px;color:var(--dim2);margin-top:2px">${esc(st?st.name:code)} ${side==='buy'?'매도':'매수'} 호가에
+          ${n(qty-r.filled)}주가 부족해 나머지는 취소했습니다</div></div></div>`, 4200);
+  }
+  return r;
 }
 
 document.addEventListener('click', async e=>{
@@ -1236,8 +1260,8 @@ document.addEventListener('click', async e=>{
   const fromToast=b.closest('.toast');
   if(fromToast) closeToast(fromToast.dataset.toast);
 
-  if(a==='set'){ const num=!isNaN(Number(v))&&k!=='tab'&&k!=='sort';
-    U[k]= k==='market'? v==='1' : (num? Number(v) : v);
+  if(a==='set'){ const num=!isNaN(Number(v))&&k!=='tab'&&k!=='sort'&&k!=='side';
+    U[k]= num? Number(v) : v;
     if(k==='tab'&&v==='차트'){ loadChart(U.code); setTimeout(drawChart,0); } }
   else if(a==='tog'){ U.codes = U.codes.includes(v)? U.codes.filter(c=>c!==v) : [...U.codes,v]; }
   else if(a==='go'){ return go(v); }
@@ -1281,34 +1305,33 @@ document.addEventListener('click', async e=>{
   }
 
   else if(a==='stock'){ const st=stockOf(v); if(!st) return;
-    U.code=v; U.price=st.last; U.qty=CFG.lotSize; return go('stock'); }
-  else if(a==='px'){ U.price=Number(v); U.market=false; }
-  else if(a==='p'){ U.price=Math.max(tickSize(U.price),roundTick(U.price+Number(v)*tickSize(U.price))); }
-  else if(a==='q'){ U.qty=Math.max(CFG.lotSize,U.qty+Number(v)*CFG.lotSize); }
-  else if(a==='ratio'){ const st=stockOf(U.code); if(!st) return;
-    const px=U.market? st.last : U.price;
-    U.qty=Math.max(CFG.lotSize,floorLot(me.cash/(px*(1+CFG.feeRate))*Number(v)/100)); }
+    U.code=v; U.qty=CFG.lotSize; return go('stock'); }
+  else if(a==='q'){ U.qty=Math.min(tradeCap(), Math.max(CFG.lotSize, U.qty+Number(v)*CFG.lotSize)); }
+  else if(a==='ratio'){
+    // 고른 방향의 한도에서만 센다. 매수 한도로 매도를 시도하던 혼선이 여기서 났다.
+    const cap=tradeCap(), q=floorLot(cap*Number(v)/100);
+    U.qty = q>0 ? q : (cap>=CFG.lotSize ? CFG.lotSize : 0); }
 
   else if(a==='newsBuy'||a==='newsSell'){
     const st=stockOf(v); if(!st) return;
     const t=me.tradable.find(x=>x.code===v)||{maxBuyQty:0,maxSellQty:0};
     const buy=a==='newsBuy';
-    const px=roundTick(st.last*(buy?1.02:0.98));
-    const cap=buy? Math.min(t.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate)))) : t.maxSellQty;
+    const cap=buy? Math.min(t.maxBuyQty, floorLot(me.cash/(st.last*(1+CFG.feeRate)))) : t.maxSellQty;
     const qty=Math.max(CFG.lotSize, floorLot(cap*0.5));
     if(cap<CFG.lotSize) return toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
       message:buy?'현금이 부족합니다':'보유 주식이 부족합니다'});
-    return busy(async()=>{ await submitOrder(v, buy?'buy':'sell', px, qty, false); });
+    return busy(async()=>{ await submitOrder(v, buy?'buy':'sell', null, qty, true); });
   }
   else if(a==='cancel'){
     const code=b.dataset.c, id=v;
     return busy(async()=>{ await api('POST', R('/orders/cancel'), {code, orderId:id}); });
   }
   else if(a==='order'){
-    const code=U.code, side=v, market=U.market, price=U.price, qty=U.qty;
+    const code=U.code, side=U.side, qty=U.qty;
+    if(qty<CFG.lotSize) return;
     return busy(async()=>{
-      const r=await submitOrder(code, side, price, qty, market);
-      if(!r.filled&&!r.resting) toastErr({code:'NOT_FILLED',message:'체결도 등록도 되지 않았습니다'});
+      const r=await submitOrder(code, side, null, qty, true);   // 시장가뿐이다
+      if(!r.filled) toastErr({code:'NOT_FILLED',message:'체결되지 않았습니다'});
     });
   }
   renderNow();
