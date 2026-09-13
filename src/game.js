@@ -1,6 +1,6 @@
 'use strict';
 
-const { STOCK_POOL, DEFAULTS, roundToTick } = require('./config');
+const { STOCK_POOL, DEFAULTS, roundToTick, floorToTick } = require('./config');
 const { OrderBook, Order, bumpSeq } = require('./orderbook');
 const Bots = require('./bots');
 const News = require('./news');
@@ -529,6 +529,19 @@ class Game {
       const opp = side === 'buy' ? s.book.bestAsk() : s.book.bestBid();
       if (opp === null) throw err('NO_COUNTERPARTY', '반대편 호가가 없습니다. 지정가로 주문하세요');
       price = roundToTick(side === 'buy' ? opp * 1.30 : opp * 0.70);
+      if (side === 'buy') {
+        // 시장가 매수는 "현금이 닿는 데까지 산다". 화면의 '최대' 는 현재가 기준 수량이라
+        // 최우선 매도호가가 그보다 몇 원만 높아도 통째로 거부됐다(실측: 현금 110만원·현재가
+        // 1,065·매도호가 1,070 에서 1,030주 거부, 510주는 체결). 게다가 예약금을 매도호가의
+        // 1.30배로 잡으니 현금의 77% 넘게는 아예 낼 수 없었다.
+        //  1) 최우선 매도호가로 살 수 있는 수량까지만 산다 — 한 단위도 안 되면 그때 거부
+        //  2) 쓸어담을 상한을 현금이 감당하는 가격까지 내린다 — 그 위 호가는 IOC 로 취소
+        const unit = 1 + this.cfg.feeRate;
+        const canAtBest = Math.floor(p.cash / (opp * unit) / lot) * lot;
+        if (canAtBest < lot) throw err('INSUFFICIENT_CASH', '현금이 부족합니다');
+        if (qty > canAtBest) qty = canAtBest;
+        price = Math.min(price, floorToTick(Math.floor(p.cash / (qty * unit))));
+      }
     } else {
       price = roundToTick(Number(price));
     }
@@ -712,7 +725,10 @@ class Game {
     // 참가자가 계속 "현금이 부족합니다" 를 맞게 된다(부하 테스트에서 거부의 83%가 이것이었다).
     const lot = this.cfg.lotSize;
     const tradable = this.stocks.map(s => {
-      const unit = s.last * (1 + this.cfg.feeRate);
+      // 실제로 사는 값은 현재가가 아니라 최우선 매도호가다. 현재가로 세면 화면의 '최대' 가
+      // 몇 원 차이로 넘쳐서 엔진이 수량을 줄여 체결한다 — 보여주는 숫자부터 맞춘다.
+      const ask = s.book.bestAsk();
+      const unit = (ask !== null ? ask : s.last) * (1 + this.cfg.feeRate);
       const free = p.holdings[s.code] || 0;
       return {
         code: s.code, name: s.name, last: s.last,

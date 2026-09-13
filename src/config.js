@@ -144,4 +144,10 @@ function roundToTick(price) {
   return Math.max(t, Math.round(price / t) * t);
 }
 
-module.exports = { STOCK_POOL, DEFAULTS, tickSize, roundToTick };
+/** 가격을 호가 단위로 내림. "이 값을 넘기면 안 된다" 는 상한을 호가에 맞출 때 쓴다. */
+function floorToTick(price) {
+  const t = tickSize(price);
+  return Math.max(t, Math.floor(price / t) * t);
+}
+
+module.exports = { STOCK_POOL, DEFAULTS, tickSize, roundToTick, floorToTick };

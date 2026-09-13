@@ -431,5 +431,59 @@ test('뉴스를 끄면 뉴스가 한 건도 발생하지 않는다', () => {
   assert.strictEqual(g.news.length, 0);
 });
 
+test('화면이 계산한 최대 수량으로 시장가 매수해도 거부되지 않고 현금 안에서 체결된다', () => {
+  // 화면의 '최대' 는 tradable.maxBuyQty(현재가 기준)다. 시장가 예약금을 최우선 매도호가의
+  // 1.30배로 잡으면 이 수량이 통째로 거부됐다 — 막 사는 사람이 가장 많이 누르는 버튼이다.
+  const g = buildGame({ botCount: 30 });
+  runTicks(g, 45 + 400);                       // 봇 호가가 깔릴 시간
+  const id = [...g.players.values()].find(p => !p.isBot).id;
+  const s = g.stocks.find(x => x.book.bestAsk() !== null);
+  assert.ok(s, '매도 호가가 있는 종목이 있어야 한다');
+  const p = g.players.get(id);
+  const cashBefore = p.cash;
+  const t = g.playerView(id, 0).tradable.find(x => x.code === s.code);
+  assert.ok(t.maxBuyQty >= g.cfg.lotSize, '살 수 있는 수량이 있어야 한다');
+
+  const r = g.submitOrder(id, s.code, 'buy', 'market', t.maxBuyQty);
+  assert.ok(r.filled > 0, '최대 수량 시장가가 한 주도 체결되지 않았다');
+  assert.ok(p.cash >= 0, `현금이 음수가 됐다: ${p.cash}`);
+  assert.ok(p.cash < cashBefore, '현금이 줄지 않았다');
+  assert.strictEqual(r.resting, 0, '시장가는 남는 수량이 없어야 한다(IOC)');
+});
+
+test('현금보다 많은 수량을 시장가로 내면 거부하지 않고 살 수 있는 만큼만 산다', () => {
+  const g = buildGame({ botCount: 30 });
+  runTicks(g, 45 + 400);
+  const id = [...g.players.values()].find(p => !p.isBot).id;
+  const s = g.stocks.find(x => x.book.bestAsk() !== null);
+  const p = g.players.get(id);
+  const ask = s.book.bestAsk();
+  const canAtBest = Math.floor(p.cash / (ask * (1 + g.cfg.feeRate)) / g.cfg.lotSize) * g.cfg.lotSize;
+  const r = g.submitOrder(id, s.code, 'buy', 'market', canAtBest + g.cfg.lotSize * 10);
+  assert.ok(r.filled > 0, '한 주도 체결되지 않았다');
+  assert.ok(r.filled <= canAtBest, `최우선 매도호가 기준 한도(${canAtBest})를 넘겨 샀다: ${r.filled}`);
+  assert.ok(p.cash >= 0, `현금이 음수가 됐다: ${p.cash}`);
+});
+
+test('한 단위도 못 살 만큼 현금이 없으면 시장가 매수는 거부된다', () => {
+  const g = buildGame({ botCount: 30 });
+  runTicks(g, 45 + 400);
+  const id = [...g.players.values()].find(p => !p.isBot).id;
+  const s = g.stocks.find(x => x.book.bestAsk() !== null);
+  g.players.get(id).cash = s.book.bestAsk() * g.cfg.lotSize - 1;    // 10주 값에서 1원 모자라게
+  assert.throws(() => g.submitOrder(id, s.code, 'buy', 'market', g.cfg.lotSize), e => e.code === 'INSUFFICIENT_CASH');
+});
+
+test('화면의 maxBuyQty 는 최우선 매도호가 기준이라 그대로 시장가로 내도 전량 체결을 시도한다', () => {
+  const g = buildGame({ botCount: 30 });
+  runTicks(g, 45 + 400);
+  const id = [...g.players.values()].find(p => !p.isBot).id;
+  const s = g.stocks.find(x => x.book.bestAsk() !== null);
+  const p = g.players.get(id);
+  const t = g.playerView(id, 0).tradable.find(x => x.code === s.code);
+  const ask = s.book.bestAsk();
+  assert.ok(t.maxBuyQty * ask * (1 + g.cfg.feeRate) <= p.cash, 'maxBuyQty 가 최우선 매도호가로도 살 수 없는 수량이다');
+});
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
