@@ -34,7 +34,7 @@ async function main() {
 
   const room = await J('POST', '/api/rooms', {
     title: '부하 테스트',
-    config: { stockCodes: ['SNU','YON','KOR','HYU','DGU','KKU'], botCount: 50,
+    config: { stockCodes: ['SEC','SKH','LGE','HMC','NVR','KKO'], botCount: 50,
               ipoSec: 5, durationMin: 3, tickMs: 250 },
   });
   const code = room.data.roomCode;

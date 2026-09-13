@@ -205,7 +205,9 @@ function decideIpo(p, stock, ctx) {
               : p.botType === 'value' ? 0.90 + rnd() * 0.15
               : p.botType === 'maker' ? 0.98 + rnd() * 0.12
               : 0.95 + rnd() * 0.25;
-  const price = roundToTick(stock.initialPrice * eager);
+  // 하한(기준가 × ipoFloorRatio) 미만은 배정되지 않는 공개 규칙이라 그 밑으로는 쓰지 않는다
+  const floorR = ctx.ipoFloorRatio > 0 ? ctx.ipoFloorRatio : 1;
+  const price = roundToTick(stock.initialPrice * Math.max(floorR, eager));
   const budget = p.cash * (lo + rnd() * lo * 2.5);
   const qty = Math.floor(budget / price / lotSize) * lotSize;
   if (qty < lotSize) return null;

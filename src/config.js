@@ -8,26 +8,27 @@
  */
 
 // ── 종목 마스터 풀 ────────────────────────────────────────────────
-// 방을 만들 때 이 중에서 참여 종목을 고른다.
+// 방을 만들 때 이 중에서 참여 종목을 고른다. 이름은 국내 대표 기업에서 따왔지만
+// 가격·수급은 전부 게임 안의 가상 값이다. 실제 시세와는 아무 관계가 없다.
 // 초기가는 서로 다르게 두되 발행주식수는 시가총액이 균등해지도록 런타임에 계산한다
 // (initialPrice 가 낮은 종목일수록 주식수가 많아진다). 저가주가 유리해지는 걸 막는다.
 const STOCK_POOL = [
-  { code: 'SNU', name: '서울대', initialPrice: 1200, color: '#1b3f7a' },
-  { code: 'YON', name: '연세대', initialPrice: 2500, color: '#0a2d5e' },
-  { code: 'KOR', name: '고려대', initialPrice: 3400, color: '#8b1a2b' },
-  { code: 'HYU', name: '한양대', initialPrice: 1800, color: '#0f4c81' },
-  { code: 'DGU', name: '동국대', initialPrice: 900,  color: '#d4870c' },
-  { code: 'KKU', name: '건국대', initialPrice: 2200, color: '#00704a' },
-  { code: 'HON', name: '홍익대', initialPrice: 5000, color: '#1a1a2e' },
-  { code: 'KHU', name: '경희대', initialPrice: 1500, color: '#8c2b3f' },
-  { code: 'KGU', name: '경기대', initialPrice: 3000, color: '#2b5f8c' },
-  { code: 'SSU', name: '숭실대', initialPrice: 4200, color: '#1f6f3f' },
+  { code: 'SEC', name: '삼성전자',    initialPrice: 1200, color: '#1428A0' },
+  { code: 'SKH', name: 'SK하이닉스',  initialPrice: 2500, color: '#F37021' },
+  { code: 'LGE', name: 'LG전자',      initialPrice: 3400, color: '#A50034' },
+  { code: 'HMC', name: '현대차',      initialPrice: 1800, color: '#00AAD2' },
+  { code: 'NVR', name: 'NAVER',       initialPrice: 900,  color: '#03C75A' },
+  { code: 'KKO', name: '카카오',      initialPrice: 2200, color: '#FAE100' },
+  { code: 'POS', name: 'POSCO홀딩스', initialPrice: 5000, color: '#005BAC' },
+  { code: 'KBF', name: 'KB금융',      initialPrice: 1500, color: '#FFBC00' },
+  { code: 'KIA', name: '기아',        initialPrice: 3000, color: '#BB162B' },
+  { code: 'CLT', name: '셀트리온',    initialPrice: 4200, color: '#0E9F8E' },
 ];
 
 // ── 게임 규칙 기본값 ──────────────────────────────────────────────
 const DEFAULTS = {
   // 참여 종목 (STOCK_POOL 의 code 배열). 방 만들 때 선택.
-  stockCodes: ['SNU', 'YON', 'KOR', 'HYU', 'DGU', 'KKU'],
+  stockCodes: ['SEC', 'SKH', 'LGE', 'HMC', 'NVR', 'KKO'],
 
   // 자산
   seedMoney: 1_000_000,     // 1인당 시작 현금
@@ -98,9 +99,17 @@ const DEFAULTS = {
   // 현실감 장치다. 실제 한국 주식의 왕복 비용(약 0.2%)에 맞춰 잡았다.
   feeRate: 0.0015,
 
-  // 유동성: 전체 시드머니 중 몇 %만큼을 시가총액으로 발행할지.
-  // 낮을수록 주식이 귀해져 가격이 잘 오른다.
-  floatCapitalRatio: 0.60,
+  // 발행 시가총액: 전체 시드머니의 몇 배를 기준가 기준 시가총액으로 공모에 내놓을지.
+  //
+  // 이 값이 방 크기에 대한 밸런스의 견고함을 정한다. 0.6 이던 시절에는 봇 30명에 사람이
+  // 24명만 넘어도 매도 호가가 30% 넘게 비고, 뉴스에 먼저 반응한 사람이 보유보다 뒤처졌다
+  // (사람 40명: 뉴스대응 17.5등 vs 보유 8.9등). 공모에서 청약이 잘려 시장이 구조적으로
+  // 현금 과잉이었고, 사람이 많을수록 그 현금이 얇은 매도 호가를 한 번에 쓸어버렸기 때문이다.
+  // 1.0 은 사람 48명 방에 월급을 매분 전부 쏟는 참가자가 섞이면 다시 깨졌고(매도 호가 34% 공백),
+  // 1.5 부터 사람 8~48명 전 구간에서 판정이 전부 통과한다(README 참고).
+  // 1.5 이상은 공모 청약 수요(약 0.5배)가 상한이라 실제 발행량이 더 늘지 않는다 — 사실상
+  // "기준가 이상으로 청약된 물량은 전부 발행"이라는 뜻이다.
+  floatCapitalRatio: 1.5,
 
   // NPC 봇 — 사람과 완전히 동일한 조건(현금/월급/인플레/정보)으로 참가한다.
   botCount: 30,
@@ -129,6 +138,10 @@ const DEFAULTS = {
   // 봇이 개장 공모에 현금의 몇 %부터 지르는가 (실제로는 이 값의 1~3.5배 사이에서 무작위).
   // 이게 곧 시장에 풀리는 주식의 양이 된다.
   ipoBidRatio: 0.30,
+  // 공모가 하한 (기준가 대비). 이 밑의 청약은 배정하지 않는다.
+  // 수요가 발행량에 못 미치면 공모가는 이 하한이 된다. 하한이 없으면 최저 청약가가 곧 공모가라서
+  // 10주를 5원에 써낸 한 명 때문에 전원이 5원에 배정받는 일이 생긴다.
+  ipoFloorRatio: 1.0,
 };
 
 /** 호가 단위 — 가격대별로 굵게. 주문이 같은 값에 모여야 체결이 된다. */

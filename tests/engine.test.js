@@ -32,7 +32,7 @@ function totalCash(g) {
 
 function buildGame(over = {}, seed = 7) {
   const g = new Game({
-    stockCodes: ['SNU', 'YON', 'KOR', 'HYU'],
+    stockCodes: ['SEC', 'SKH', 'LGE', 'HMC'],
     botCount: 24, ipoSec: 10, durationMin: 3, tickMs: 250, ...over,
   }, seed);
   for (let i = 0; i < 6; i++) g.addPlayer('사람' + (i + 1));
@@ -93,7 +93,7 @@ test('무상증자를 끄면 발행 주식 수가 전혀 변하지 않는다', (
 });
 
 test('무상증자는 주식을 가진 사람에게만 배정된다 (무행동자는 0주)', () => {
-  const g = new Game({ stockCodes: ['SNU', 'YON'], botCount: 10, ipoSec: 5,
+  const g = new Game({ stockCodes: ['SEC', 'SKH'], botCount: 10, ipoSec: 5,
                        durationMin: 5, tickMs: 250, salaryIntervalSec: 15 }, 3);
   const idle = g.addPlayer('무행동').id;
   const act = g.addPlayer('적극').id;
@@ -155,7 +155,7 @@ test('인플레이션은 적정가만 움직이고 체결가는 시장 수급이
   // 인플레율을 아무리 올려도 체결가는 거의 그대로다. 실측으로 확인한 한계이지 의도한 설계는 아니다.
   // 나중에 전달 경로를 손볼 일이 생기면 이 테스트가 먼저 깨져서 알려줄 것이다.
   const measure = (infl) => {
-    const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU'], botCount: 40, ipoSec: 10,
+    const g = new Game({ stockCodes: ['SEC','SKH','LGE','HMC'], botCount: 40, ipoSec: 10,
                          durationMin: 8, tickMs: 250, inflationPerMin: infl,
                          idioVolatility: 0, news: { enabled: false } }, 31);
     for (let i = 0; i < 6; i++) g.addPlayer('P' + i);
@@ -184,7 +184,7 @@ test('개장 공모 청약이 많을수록 매도 호가가 두꺼워진다', ()
   // 이게 부족하면 매도 호가가 나오는 족족 두꺼운 매수 호가에 먹혀서,
   // 사려는 사람은 살 물건이 없어 선점 경쟁 자체가 성립하지 않는다.
   const askDepth = (ratio) => {
-    const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU'], botCount: 40, ipoSec: 10,
+    const g = new Game({ stockCodes: ['SEC','SKH','LGE','HMC'], botCount: 40, ipoSec: 10,
                          durationMin: 8, tickMs: 250, ipoBidRatio: ratio }, 41);
     for (let i = 0; i < 6; i++) g.addPlayer('P' + i);
     g.start();
@@ -204,7 +204,7 @@ test('개장 공모 청약이 많을수록 매도 호가가 두꺼워진다', ()
 
 test('호가 제시형 봇이 여러 단계에 걸쳐 호가를 깐다', () => {
   const levelsOf = (makerLevels) => {
-    const g = new Game({ stockCodes: ['SNU','YON'], botCount: 30, ipoSec: 10, durationMin: 8,
+    const g = new Game({ stockCodes: ['SEC','SKH'], botCount: 30, ipoSec: 10, durationMin: 8,
                          tickMs: 250, makerLevels,
                          botMix: { trend: 0.2, maker: 0.8, noise: 0, contra: 0, value: 0 } }, 51);
     g.addPlayer('t'); g.start();
@@ -291,7 +291,7 @@ test('순위표가 총자산 내림차순으로 정렬되고 봇을 제외할 �
 
 test('아무것도 안 한 사람은 하위권으로 밀린다', () => {
   // 사람 12명 중 6명은 완전 무행동(공모도 거래도 안 함), 6명은 공모+매수
-  const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU'], botCount: 40,
+  const g = new Game({ stockCodes: ['SEC','SKH','LGE','HMC'], botCount: 40,
                        ipoSec: 10, durationMin: 8, tickMs: 250 }, 11);
   const idle = [], act = [];
   for (let i = 0; i < 6; i++) idle.push(g.addPlayer('무행동' + i).id);
@@ -373,7 +373,7 @@ test('호가에 자기 주문만 있으면 시장가가 명확한 오류를 낸�
 test('돌발뉴스가 발생하고 호재/악재가 대체로 균형을 이룬다', () => {
   let pos = 0, neg = 0, total = 0;
   for (let seed = 0; seed < 8; seed++) {
-    const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU','DGU','KKU'], botCount: 20,
+    const g = new Game({ stockCodes: ['SEC','SKH','LGE','HMC','NVR','KKO'], botCount: 20,
                          ipoSec: 5, durationMin: 15, tickMs: 250 }, seed + 55);
     for (let i = 0; i < 6; i++) g.addPlayer('P' + i);
     g.start();
@@ -388,7 +388,7 @@ test('돌발뉴스가 발생하고 호재/악재가 대체로 균형을 이룬�
 });
 
 test('뉴스가 적정가를 즉시 점프시킨다', () => {
-  const g = new Game({ stockCodes: ['SNU','YON','KOR','HYU'], botCount: 20, ipoSec: 0,
+  const g = new Game({ stockCodes: ['SEC','SKH','LGE','HMC'], botCount: 20, ipoSec: 0,
                        durationMin: 15, tickMs: 250, inflationPerMin: 0, idioVolatility: 0 }, 91);
   g.addPlayer('t'); g.start();
   const seen = new Set();
@@ -413,7 +413,7 @@ test('봇이 뉴스에 한꺼번에 반응하지 않고 시차를 두고 동조�
   const News = require('../src/news');
   const g = buildGame();
   const bots = [...g.players.values()].filter(p => p.isBot).slice(0, 20);
-  const fake = { id: 'nx', code: 'SNU', sign: 1, strength: 0.06, tick: 100,
+  const fake = { id: 'nx', code: 'SEC', sign: 1, strength: 0.06, tick: 100,
                  lifeTicks: 360, reactionTicks: 160 };
   let reactingAt110 = 0, reactingAt250 = 0;
   for (const b of bots) {
@@ -483,6 +483,41 @@ test('화면의 maxBuyQty 는 최우선 매도호가 기준이라 그대로 시�
   const t = g.playerView(id, 0).tradable.find(x => x.code === s.code);
   const ask = s.book.bestAsk();
   assert.ok(t.maxBuyQty * ask * (1 + g.cfg.feeRate) <= p.cash, 'maxBuyQty 가 최우선 매도호가로도 살 수 없는 수량이다');
+});
+
+test('공모 미달이어도 최저 청약가가 아니라 기준가(하한)로 배정된다', () => {
+  // 하한이 없으면 수요가 물량에 못 미칠 때 "가장 낮은 청약가"가 공모가가 되어,
+  // 누가 10주를 5원에 써내는 순간 전원이 5원에 배정받는다.
+  const g = new Game({ stockCodes: ['SEC', 'SKH'], botCount: 4, ipoSec: 5, durationMin: 1,
+                       tickMs: 250, floatCapitalRatio: 3 }, 5);          // 발행을 넉넉히 → 확실한 미달
+  const fair = g.addPlayer('정상').id, low = g.addPlayer('저가').id;
+  g.start();
+  const s = g.stocks[0];
+  g.submitIpoBid(fair, s.code, Math.round(s.initialPrice * 1.1), 100);
+  g.submitIpoBid(low, s.code, 5, 10);
+  runTicks(g, 25);
+  assert.strictEqual(g.phase, PHASE.TRADING);
+  assert.strictEqual(s.open, s.initialPrice, `공모가 ${s.open} — 기준가 ${s.initialPrice} 가 하한이어야 한다`);
+  assert.strictEqual(g.players.get(fair).holdings[s.code], 100, '정상 청약이 전량 배정되지 않음');
+  assert.strictEqual(g.players.get(fair).cash, 1_000_000 - s.initialPrice * 100, '기준가로 정산되지 않음');
+  assert.strictEqual(g.players.get(low).holdings[s.code] || 0, 0, '하한 미만 청약이 배정됨');
+  assert.strictEqual(g.players.get(low).cash, 1_000_000, '하한 미만 청약 증거금이 환급되지 않음');
+});
+
+test('공모 초과 청약이면 공모가는 하한 위에서 청약가 경쟁으로 정해진다', () => {
+  const g = new Game({ stockCodes: ['SEC'], botCount: 0, ipoSec: 5, durationMin: 1,
+                       tickMs: 250, floatCapitalRatio: 0.05 }, 5);       // 발행을 아주 적게 → 확실한 초과
+  const a = g.addPlayer('A').id, b = g.addPlayer('B').id;
+  g.start();
+  const s = g.stocks[0];
+  const hi = Math.round(s.initialPrice * 1.3), lo = Math.round(s.initialPrice * 1.1);
+  g.submitIpoBid(a, s.code, hi, s.float);          // 혼자서 발행량을 다 가져간다
+  g.submitIpoBid(b, s.code, lo, s.float);
+  runTicks(g, 25);
+  assert.strictEqual(s.open, hi, `공모가 ${s.open} — 물량이 소진되는 청약가 ${hi} 여야 한다`);
+  assert.strictEqual(g.players.get(a).holdings[s.code], s.float);
+  assert.strictEqual(g.players.get(b).holdings[s.code] || 0, 0, '낮은 청약가가 배정됨');
+  assert.strictEqual(g.players.get(b).cash, 1_000_000, '미배정 증거금이 환급되지 않음');
 });
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

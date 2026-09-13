@@ -349,6 +349,7 @@ class Game {
       makerSpread: this.cfg.makerSpread,
       makerLevels: this.cfg.makerLevels,
       ipoBidRatio: this.cfg.ipoBidRatio,
+      ipoFloorRatio: this.cfg.ipoFloorRatio,
       stocks: this.stocks.map(s => ({
         code: s.code, last: s.last, fair: s.fair,
         initialPrice: s.initialPrice, refReturn: this._refReturn(s),
@@ -412,13 +413,17 @@ class Game {
   _closeIpo() {
     for (const s of this.stocks) {
       const bids = s.ipoBids.slice().sort((a, b) => (b.price - a.price) || (a.seq - b.seq));
-      if (!bids.length) {
-        this._notice(`${s.name} 공모 미달 — 시초가 ${s.initialPrice.toLocaleString()}원`, 'ipo');
-        continue;
+      // 공모가 하한 = 기준가 × ipoFloorRatio. 이 밑의 청약은 배정하지 않고 전액 환급한다.
+      // 하한이 없으면 수요가 물량에 못 미칠 때 "가장 낮은 청약가"가 공모가가 되어,
+      // 누가 10주를 5원에 써내는 순간 전원이 5원에 배정받는다.
+      const floor = roundToTick(s.initialPrice * (this.cfg.ipoFloorRatio > 0 ? this.cfg.ipoFloorRatio : 1));
+      // 공모가: 발행 물량이 소진되는 가격. 수요가 물량에 못 미치면 하한가.
+      let cum = 0, clearing = floor;
+      for (const b of bids) {
+        if (b.price < floor) break;                       // 가격 내림차순이라 이후는 전부 하한 미만
+        cum += b.qty;
+        if (cum >= s.float && clearing === floor) clearing = b.price;   // 계속 더해 청약 배수를 정확히 센다
       }
-      // 공모가: 발행 물량이 소진되는 가격. 수요가 물량에 못 미치면 최저 청약가.
-      let cum = 0, clearing = bids[bids.length - 1].price;
-      for (const b of bids) { cum += b.qty; if (cum >= s.float) { clearing = b.price; break; } }
 
       let remain = s.float;
       for (const b of bids) {
@@ -440,7 +445,9 @@ class Game {
       s.last = clearing; s.open = clearing; s.high = clearing; s.low = clearing;
       s.ipoBids = [];
       const ratio = cum / Math.max(1, s.float);
-      this._notice(`${s.name} 공모가 ${clearing.toLocaleString()}원 확정 (청약 ${ratio.toFixed(1)}배, ${s.issued.toLocaleString()}주 배정)`, 'ipo');
+      this._notice(s.issued > 0
+        ? `${s.name} 공모가 ${clearing.toLocaleString()}원 확정 (청약 ${ratio.toFixed(1)}배, ${s.issued.toLocaleString()}주 배정)`
+        : `${s.name} 공모 미달 — 시초가 ${clearing.toLocaleString()}원`, 'ipo');
     }
     this.phase = PHASE.TRADING;
     this._notice('장이 열렸습니다', 'open');

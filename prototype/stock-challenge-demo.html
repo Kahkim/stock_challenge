@@ -105,23 +105,23 @@ const CFG = {
   news:{enabled:true, intervalSec:70, maxActive:3, positiveRatio:0.5, impact:0.07,
         strength:0.06, negativeMultiplier:4.5, reactionSec:40, lifeSec:90},
 };
-const NEWS_POS=['{n} 대량 매수 유입 — 매도 호가 공백','{n} 동문 매수세 결집','{n} 신고가 경신 — 추격 매수 확산',
+const NEWS_POS=['{n} 대량 매수 유입 — 매도 호가 공백','{n} 개인 매수세 결집','{n} 신고가 경신 — 추격 매수 확산',
   '{n} 기관 순매수 전환','{n} 유통 물량 급감 — 품절주 조짐','{n} 목표가 상향 리포트 발간',
-  '{n} 거래량 폭증 — 상승 탄력 확대','{n} 저평가 매력 부각','{n} 응원단 출정 — 개인 매수 유입','{n} 대규모 단체 매수 소문'];
+  '{n} 거래량 폭증 — 상승 탄력 확대','{n} 저평가 매력 부각','{n} 외국인 매수 유입 — 수급 개선','{n} 대규모 단체 매수 소문'];
 const NEWS_NEG=['{n} 차익실현 매물 출회','{n} 대량 매도 물량 감지','{n} 투자심리 위축 — 매수 관망',
   '{n} 고평가 부담 확대','{n} 목표가 하향 리포트 발간','{n} 거래량 급감 — 매수세 실종',
   '{n} 단기 급등 피로 누적','{n} 손절 물량 확산','{n} 상승분 반납 — 눈치보기 장세','{n} 대기 매물 부담'];
 const POOL = [
-  {code:'SNU',name:'서울대',initialPrice:1200,color:'#1b3f7a'},
-  {code:'YON',name:'연세대',initialPrice:2500,color:'#0a2d5e'},
-  {code:'KOR',name:'고려대',initialPrice:3400,color:'#8b1a2b'},
-  {code:'HYU',name:'한양대',initialPrice:1800,color:'#0f4c81'},
-  {code:'DGU',name:'동국대',initialPrice:900, color:'#d4870c'},
-  {code:'KKU',name:'건국대',initialPrice:2200,color:'#00704a'},
-  {code:'HON',name:'홍익대',initialPrice:5000,color:'#1a1a2e'},
-  {code:'KHU',name:'경희대',initialPrice:1500,color:'#8c2b3f'},
-  {code:'KGU',name:'경기대',initialPrice:3000,color:'#2b5f8c'},
-  {code:'SSU',name:'숭실대',initialPrice:4200,color:'#1f6f3f'},
+  {code:'SEC',name:'삼성전자',initialPrice:1200,color:'#1b3f7a'},
+  {code:'SKH',name:'SK하이닉스',initialPrice:2500,color:'#0a2d5e'},
+  {code:'LGE',name:'LG전자',initialPrice:3400,color:'#8b1a2b'},
+  {code:'HMC',name:'현대차',initialPrice:1800,color:'#0f4c81'},
+  {code:'NVR',name:'NAVER',initialPrice:900, color:'#d4870c'},
+  {code:'KKO',name:'카카오',initialPrice:2200,color:'#00704a'},
+  {code:'POS',name:'POSCO홀딩스',initialPrice:5000,color:'#1a1a2e'},
+  {code:'KBF',name:'KB금융',initialPrice:1500,color:'#8c2b3f'},
+  {code:'KIA',name:'기아',initialPrice:3000,color:'#2b5f8c'},
+  {code:'CLT',name:'셀트리온',initialPrice:4200,color:'#1f6f3f'},
 ];
 const FRIENDS = ['차트왕','학교사랑','눈물의손절','뒷북러','가만히있기'];
 
@@ -482,7 +482,7 @@ const $ = s => document.querySelector(s);
 const view = $('#view'), toastEl = $('#toasts'), modalEl = $('#modal');
 const U = { view:'setup', codes:POOL.map(s=>s.code), dur:15, ipoSec:45, seed:1000000,
             bots:30, code:null, tab:'호가', price:0, qty:CFG.lotSize, market:false,
-            ipoCode:'SNU', ipoPrice:0, ipoQty:0, sort:'chg' };
+            ipoCode:'SEC', ipoPrice:0, ipoQty:0, sort:'chg' };
 
 const n  = v => Math.round(v).toLocaleString('en-US');
 const pc = v => (v>=0?'+':'−')+Math.abs(v).toFixed(2)+'%';

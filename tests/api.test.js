@@ -70,7 +70,7 @@ async function main() {
   await test('POST /api/rooms 로 방을 만들면 참가코드와 방장토큰이 나온다', async () => {
     const { status, data } = await J('POST', '/api/rooms', {
       title: '동문회 챌린지',
-      config: { stockCodes: ['SNU', 'YON', 'KOR', 'HYU'], botCount: 20, ipoSec: 3,
+      config: { stockCodes: ['SEC', 'SKH', 'LGE', 'HMC'], botCount: 20, ipoSec: 3,
                 durationMin: 2, tickMs: 100, salaryIntervalSec: 20, seed: 20260912 },
     });
     assert.strictEqual(status, 201);
@@ -84,7 +84,7 @@ async function main() {
   await test('같은 시드로 방을 만들면 같은 판이 재현된다', async () => {
     const mk = async () => {
       const { data } = await J('POST', '/api/rooms', {
-        config: { stockCodes: ['SNU', 'YON', 'KOR'], botCount: 12, ipoSec: 2,
+        config: { stockCodes: ['SEC', 'SKH', 'LGE'], botCount: 12, ipoSec: 2,
                   durationMin: 2, tickMs: 100, seed: 777 },
       });
       await J('POST', `/api/rooms/${data.roomCode}/join`, { name: '재현' });
@@ -99,7 +99,7 @@ async function main() {
 
   await test('방 만들 때 잘못된 값은 안전한 범위로 정리된다', async () => {
     const { data } = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON', '없는종목'], botCount: 99999,
+      config: { stockCodes: ['SEC', 'SKH', '없는종목'], botCount: 99999,
                 durationMin: -5, feeRate: 9, lotSize: 0 },
     });
     assert.strictEqual(data.config.stockCodes.length, 2);
@@ -110,7 +110,7 @@ async function main() {
   });
 
   await test('종목을 1개만 고르면 거부된다', async () => {
-    const { status, data } = await J('POST', '/api/rooms', { config: { stockCodes: ['SNU'] } });
+    const { status, data } = await J('POST', '/api/rooms', { config: { stockCodes: ['SEC'] } });
     assert.strictEqual(status, 400);
     assert.strictEqual(data.error.code, 'TOO_FEW_STOCKS');
   });
@@ -180,7 +180,7 @@ async function main() {
     const before = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
     // 봇 추세형은 초기가의 최대 1.35배까지 지른다. 확실히 배정받으려면 그보다 높게.
     const r = await J('POST', `/api/rooms/${roomCode}/ipo-bids`,
-      { code: 'SNU', price: 1800, qty: 200 }, { 'X-Player-Token': alice.playerToken });
+      { code: 'SEC', price: 1800, qty: 200 }, { 'X-Player-Token': alice.playerToken });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.data.reserved, 1800 * 200);
     const after = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
@@ -198,16 +198,16 @@ async function main() {
     const { data } = await J('GET', `/api/rooms/${roomCode}/state`);
     assert.strictEqual(data.snapshot.phase, 'trading');
     const me = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': alice.playerToken });
-    const snu = me.data.holdings.find(h => h.code === 'SNU');
+    const snu = me.data.holdings.find(h => h.code === 'SEC');
     assert.ok(snu && snu.qty > 0, '공모 배정을 못 받음');
     assert.ok(snu.avgPrice > 0);
   });
 
   await test('지정가 매수 주문이 접수된다', async () => {
     const st = await J('GET', `/api/rooms/${roomCode}/state`);
-    const s = st.data.snapshot.stocks.find(x => x.code === 'YON');
+    const s = st.data.snapshot.stocks.find(x => x.code === 'SKH');
     const r = await J('POST', `/api/rooms/${roomCode}/orders`,
-      { code: 'YON', side: 'buy', price: Math.round(s.last * 0.8), qty: 20 },
+      { code: 'SKH', side: 'buy', price: Math.round(s.last * 0.8), qty: 20 },
       { 'X-Player-Token': bob.playerToken });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.data.resting, 20, '체결되면 안 되는 저가 주문이 체결됨');
@@ -220,7 +220,7 @@ async function main() {
     assert.ok(me1.data.openOrders.some(o => o.id === bob.orderId));
     assert.ok(me1.data.lockedCash > 0);
     const c = await J('POST', `/api/rooms/${roomCode}/orders/cancel`,
-      { code: 'YON', orderId: bob.orderId }, { 'X-Player-Token': bob.playerToken });
+      { code: 'SKH', orderId: bob.orderId }, { 'X-Player-Token': bob.playerToken });
     assert.strictEqual(c.status, 200);
     const me2 = await J('GET', `/api/rooms/${roomCode}/me`, undefined, { 'X-Player-Token': bob.playerToken });
     assert.ok(!me2.data.openOrders.some(o => o.id === bob.orderId));
@@ -240,13 +240,13 @@ async function main() {
 
   await test('잘못된 주문은 에러 코드로 구분되어 돌아온다', async () => {
     const H = { 'X-Player-Token': alice.playerToken };
-    const lot = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'SNU', side: 'buy', price: 1000, qty: 3 }, H);
+    const lot = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'SEC', side: 'buy', price: 1000, qty: 3 }, H);
     assert.strictEqual(lot.data.error.code, 'LOT_SIZE');
     const nos = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'ZZZ', side: 'buy', price: 1000, qty: 10 }, H);
     assert.strictEqual(nos.data.error.code, 'NO_STOCK');
-    const cash = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'SNU', side: 'buy', price: 99999, qty: 99999 }, H);
+    const cash = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'SEC', side: 'buy', price: 99999, qty: 99999 }, H);
     assert.strictEqual(cash.data.error.code, 'INSUFFICIENT_CASH');
-    const shr = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'KOR', side: 'sell', price: 100, qty: 999999 }, H);
+    const shr = await J('POST', `/api/rooms/${roomCode}/orders`, { code: 'LGE', side: 'sell', price: 100, qty: 999999 }, H);
     assert.strictEqual(shr.data.error.code, 'INSUFFICIENT_SHARES');
   });
 
@@ -332,7 +332,7 @@ async function main() {
 
   await test('차트 이력에 체결가와 적정가가 함께 들어있다', async () => {
     fastForward(roomCode, 60);
-    const { data } = await J('GET', `/api/rooms/${roomCode}/chart?code=SNU`);
+    const { data } = await J('GET', `/api/rooms/${roomCode}/chart?code=SEC`);
     assert.strictEqual(data.stocks.length, 1);
     assert.ok(data.stocks[0].history.length > 0);
     const pt = data.stocks[0].history[0];
@@ -359,7 +359,7 @@ async function main() {
 
   await test('방장이 조기 마감할 수 있다', async () => {
     const mk = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON'], botCount: 8, ipoSec: 1, durationMin: 30,
+      config: { stockCodes: ['SEC', 'SKH'], botCount: 8, ipoSec: 1, durationMin: 30,
                 tickMs: 100, seed: 4242 },
     });
     const c = mk.data.roomCode;
@@ -381,7 +381,7 @@ async function main() {
 
   await test('새로고침해도 같은 기기면 원래 참가자로 복귀한다', async () => {
     const mk = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON'], botCount: 6, ipoSec: 1, durationMin: 5, tickMs: 100, seed: 808 },
+      config: { stockCodes: ['SEC', 'SKH'], botCount: 6, ipoSec: 1, durationMin: 5, tickMs: 100, seed: 808 },
     });
     const c = mk.data.roomCode;
     const first = await J('POST', `/api/rooms/${c}/join`, { name: '김철수', deviceId: 'dev-A' });
@@ -417,7 +417,7 @@ async function main() {
 
   await test('주문을 폭주시키면 요청 제한에 걸린다', async () => {
     LIMITS.order.reset();
-    const body = { code: 'SNU', side: 'buy', price: 10, qty: 10 };   // 체결 안 되는 저가 주문
+    const body = { code: 'SEC', side: 'buy', price: 10, qty: 10 };   // 체결 안 되는 저가 주문
     let limitedCount = 0, first429 = -1;
     for (let i = 0; i < 60; i++) {
       const r = await J('POST', `/api/rooms/${roomCode}/orders`, body, { 'X-Player-Token': alice.playerToken });
@@ -430,7 +430,7 @@ async function main() {
 
   await test('방장이 일시정지하면 게임 시간이 멈춘다', async () => {
     const mk = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON'], botCount: 6, ipoSec: 1, durationMin: 5, tickMs: 100, seed: 909 },
+      config: { stockCodes: ['SEC', 'SKH'], botCount: 6, ipoSec: 1, durationMin: 5, tickMs: 100, seed: 909 },
     });
     const c = mk.data.roomCode, H = { 'X-Host-Token': mk.data.hostToken };
     await J('POST', `/api/rooms/${c}/join`, { name: '참가' });
@@ -452,13 +452,13 @@ async function main() {
 
   await test('강퇴해도 주식 총량이 보존된다', async () => {
     const mk = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON'], botCount: 8, ipoSec: 2, durationMin: 5, tickMs: 100, seed: 606 },
+      config: { stockCodes: ['SEC', 'SKH'], botCount: 8, ipoSec: 2, durationMin: 5, tickMs: 100, seed: 606 },
     });
     const c = mk.data.roomCode, H = { 'X-Host-Token': mk.data.hostToken };
     const p1 = await J('POST', `/api/rooms/${c}/join`, { name: '나갈사람', deviceId: 'k1' });
     await J('POST', `/api/rooms/${c}/join`, { name: '남을사람', deviceId: 'k2' });
     await J('POST', `/api/rooms/${c}/start`, {}, H);
-    await J('POST', `/api/rooms/${c}/ipo-bids`, { code: 'SNU', price: 1800, qty: 200 },
+    await J('POST', `/api/rooms/${c}/ipo-bids`, { code: 'SEC', price: 1800, qty: 200 },
             { 'X-Player-Token': p1.data.playerToken });
     fastForward(c, 40);
     const g = store.get(c).game;
@@ -477,7 +477,7 @@ async function main() {
     });
     assert.strictEqual(g.humans().length, 1, '강퇴자가 인원에서 안 빠졌다');
     assert.ok(!g.ranking(false).some(r => r.id === p1.data.playerId), '강퇴자가 순위에 남아 있다');
-    const denied = await J('POST', `/api/rooms/${c}/orders`, { code: 'SNU', side: 'buy', price: 100, qty: 10 },
+    const denied = await J('POST', `/api/rooms/${c}/orders`, { code: 'SEC', side: 'buy', price: 100, qty: 10 },
                            { 'X-Player-Token': p1.data.playerToken });
     assert.strictEqual(denied.status, 401);
   });
@@ -500,13 +500,13 @@ async function main() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-persist-'));
 
     const mk = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON', 'KOR'], botCount: 12, ipoSec: 2,
+      config: { stockCodes: ['SEC', 'SKH', 'LGE'], botCount: 12, ipoSec: 2,
                 durationMin: 5, tickMs: 100, seed: 5150 },
     });
     const c = mk.data.roomCode;
     const p1 = await J('POST', `/api/rooms/${c}/join`, { name: '복구맨', deviceId: 'rec-1' });
     await J('POST', `/api/rooms/${c}/start`, {}, { 'X-Host-Token': mk.data.hostToken });
-    await J('POST', `/api/rooms/${c}/ipo-bids`, { code: 'SNU', price: 1800, qty: 200 },
+    await J('POST', `/api/rooms/${c}/ipo-bids`, { code: 'SEC', price: 1800, qty: 200 },
             { 'X-Player-Token': p1.data.playerToken });
     fastForward(c, 300);
 
@@ -563,7 +563,7 @@ async function main() {
 
   await test('이름의 제어문자가 제거되고 중복 이름은 구분된다', async () => {
     const mk = await J('POST', '/api/rooms', {
-      config: { stockCodes: ['SNU', 'YON'], botCount: 2, ipoSec: 1, durationMin: 2, tickMs: 100, seed: 31 },
+      config: { stockCodes: ['SEC', 'SKH'], botCount: 2, ipoSec: 1, durationMin: 2, tickMs: 100, seed: 31 },
     });
     const c = mk.data.roomCode;
     const NUL = String.fromCharCode(0), LF = String.fromCharCode(10);
@@ -598,7 +598,7 @@ async function main() {
 
   await test('방 만들기를 폭주시키면 제한에 걸린다', async () => {
     LIMITS.create.reset();
-    const body = { config: { stockCodes: ['SNU', 'YON'], botCount: 0, durationMin: 1 } };
+    const body = { config: { stockCodes: ['SEC', 'SKH'], botCount: 0, durationMin: 1 } };
     let ok = 0, blocked = 0;
     for (let i = 0; i < 60; i++) {
       const r = await J('POST', '/api/rooms', body);
@@ -612,7 +612,7 @@ async function main() {
 
   await test('마감 후에는 주문이 거부된다', async () => {
     const { data } = await J('POST', `/api/rooms/${roomCode}/orders`,
-      { code: 'SNU', side: 'buy', price: 1000, qty: 10 }, { 'X-Player-Token': alice.playerToken });
+      { code: 'SEC', side: 'buy', price: 1000, qty: 10 }, { 'X-Player-Token': alice.playerToken });
     assert.strictEqual(data.error.code, 'NOT_TRADING');
   });
 

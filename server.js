@@ -403,7 +403,7 @@ async function route(req, res, url) {
     catch (e) { return fail(res, 400, e.code || 'CANCEL_FAILED', e.message); }
   }
 
-  // GET /api/rooms/:code/chart?code=SNU — 가격/적정가 이력
+  // GET /api/rooms/:code/chart?code=SEC — 가격/적정가 이력
   if (tail === 'chart' && method === 'GET') {
     const want = url.searchParams.get('code');
     const rows = g.stocks
