@@ -69,8 +69,8 @@ PORT=8080 node server.js
 ```json
 {
   "stockPool": [
-    { "code": "SNU", "name": "서울대", "initialPrice": 1200, "color": "#1b3f7a" },
-    { "code": "YON", "name": "연세대", "initialPrice": 2500, "color": "#0a2d5e" }
+    { "code": "SEC", "name": "삼성전자", "initialPrice": 1200, "color": "#1b3f7a" },
+    { "code": "SKH", "name": "SK하이닉스", "initialPrice": 2500, "color": "#0a2d5e" }
   ],
   "defaults": { "botCount": 30, "durationMin": 15, "lotSize": 10 },
   "tickSizeTable": [
@@ -86,7 +86,7 @@ PORT=8080 node server.js
 }
 ```
 
-`stockPool` 은 10종목(서울대·연세대·고려대·한양대·동국대·건국대·홍익대·경희대·경기대·숭실대) 전체입니다.
+`stockPool` 은 10종목(삼성전자·SK하이닉스·LG전자·현대차·NAVER·카카오·POSCO홀딩스·KB금융·기아·셀트리온) 전체입니다.
 방 만들기 화면에서 **체크박스로 2개 이상** 고르게 하면 됩니다.
 
 ---
@@ -97,7 +97,7 @@ PORT=8080 node server.js
 {
   "title": "동문회 챌린지",
   "config": {
-    "stockCodes": ["SNU", "YON", "KOR", "HYU", "DGU", "KKU"],  // 2개 이상 필수
+    "stockCodes": ["SEC", "SKH", "LGE", "HMC", "NVR", "KKO"],  // 2개 이상 필수
     "botCount": 30,
     "durationMin": 15,
     "ipoSec": 45
@@ -141,7 +141,7 @@ PORT=8080 node server.js
 | `tickMs` | 250 | 100~2000 | 서버 틱 주기 |
 | `lotSize` | 10 | 1~1000 | 최소 거래 단위(주) |
 | `feeRate` | 0.0015 | 0~0.05 | 편도 수수료 |
-| `floatCapitalRatio` | 0.60 | 0.05~5 | 전체 시드머니 대비 발행 시가총액 |
+| `floatCapitalRatio` | 1.5 | 0.05~5 | 전체 시드머니 대비 발행 시가총액(기준가 기준). 방 크기에 대한 밸런스 견고함을 정한다 — 0.6 이면 사람 24명 이상에서 깨진다. 1.5 이상은 청약 수요가 상한이라 발행량이 더 늘지 않는다 |
 | `botCount` | 30 | 0~500 | NPC 참가자 수 |
 | `botExcludeFromRanking` | true | — | 시상 순위에서 봇 제외 |
 | `botActionRate` | 0.035 | 0.001~0.5 | 봇이 1틱에 주문할 확률 |
@@ -150,6 +150,7 @@ PORT=8080 node server.js
 | `makerSpread` | 0.006 | 0.0005~0.1 | 호가제시형 봇이 한 단계마다 벌리는 폭 |
 | `makerLevels` | 4 | 1~10 | 호가제시형 봇이 몇 단계에 걸쳐 호가를 까는가 |
 | `ipoBidRatio` | 0.30 | 0.02~0.35 | 봇이 공모에 현금의 몇 %부터 지르는가. 시장에 풀리는 주식량을 정한다 |
+| `ipoFloorRatio` | 1.0 | 0.1~2 | 공모가 하한(기준가 대비). 이 밑의 청약은 배정되지 않는다 |
 | `lookbackSec` | 120 | 3~600 | 봇이 추세를 보는 창(초) |
 | `botMix` | trend .60 / maker .20 / noise .15 / contra .03 / value .02 | — | 봇 성향 구성비 |
 | `seed` | (무작위) | 정수 | 넣으면 같은 판이 재현된다 |
@@ -165,7 +166,7 @@ PORT=8080 node server.js
   "players": [ { "id": "p1_6ze7", "name": "앨리스" } ],
   "humanCount": 1,
   "config": { "..." },
-  "stocks": [ { "code": "SNU", "name": "서울대", "color": "#1b3f7a", "initialPrice": 1200 } ]
+  "stocks": [ { "code": "SEC", "name": "삼성전자", "color": "#1b3f7a", "initialPrice": 1200 } ]
 }
 ```
 
@@ -256,18 +257,22 @@ PORT=8080 node server.js
 ### `POST /api/rooms/{code}/ipo-bids` — 개장 공모 청약 *(참가자)*
 `phase === "ipo"` 일 때만. 한 종목에 여러 번 낼 수 있습니다.
 ```jsonc
-{ "code": "SNU", "price": 1300, "qty": 500 }   // price 는 호가단위로, qty 는 lotSize 단위로 자동 반올림
+{ "code": "SEC", "price": 1300, "qty": 500 }   // price 는 호가단위로, qty 는 lotSize 단위로 자동 반올림
 ```
 ```json
-{ "code": "SNU", "price": 1300, "qty": 500, "reserved": 650000 }
+{ "code": "SEC", "price": 1300, "qty": 500, "reserved": 650000 }
 ```
 청약 즉시 `price × qty` 만큼 **증거금이 예치**되어 `cash` 에서 빠집니다.
 공모 마감 시 단일가로 배정되고, 낙찰 차액과 미배정분은 자동 환불됩니다.
 
+**공모가는 기준가(`initialPrice`) 밑으로 내려가지 않습니다.** 청약이 발행량에 못 미치면 기준가에
+전량 배정되고, 넘치면 물량이 소진되는 청약가가 공모가가 됩니다. **기준가 미만으로 써낸 청약은
+배정되지 않고 전액 환급**되므로, 공모 화면의 기본 가격은 기준가 이상으로 두고 이 규칙을 한 줄 안내해 주세요.
+
 ### `POST /api/rooms/{code}/orders` — 주문 *(참가자)*
 ```jsonc
-{ "code": "YON", "side": "buy", "price": 2480, "qty": 100 }   // 지정가
-{ "code": "YON", "side": "sell", "price": "market", "qty": 50 } // 시장가 (price 생략도 동일)
+{ "code": "SKH", "side": "buy", "price": 2480, "qty": 100 }   // 지정가
+{ "code": "SKH", "side": "sell", "price": "market", "qty": 50 } // 시장가 (price 생략도 동일)
 ```
 ```json
 { "filled": 40, "resting": 60, "orderId": "o812", "price": 2480, "qty": 100, "market": false }
@@ -275,12 +280,12 @@ PORT=8080 node server.js
 - `filled` 즉시 체결된 수량, `resting` 호가창에 남은 수량
 - **시장가는 IOC 입니다** — 즉시 체결되고 남은 물량은 자동 취소됩니다(`resting` 항상 0). 그래서 시장가는 `orderId` 가 `null` 입니다.
 - 시장가인데 반대 호가가 없으면 **400 NO_COUNTERPARTY**. 정상적으로 자주 발생하므로 화면은 "잠시 뒤 다시 시도하세요" 정도로 받아넘기면 됩니다.
-  (기본 화면 `public/index.html` 은 시장가만 쓰므로 지정가로 우회할 길이 없습니다. 지정가를 쓰는 화면이라면 그쪽으로 안내해도 됩니다.)
+  (기본 화면 `public/index.html` 은 시장가가 기본이고, 호가창의 가격을 누르면 그 값으로 지정가 주문을 냅니다. 가격을 직접 치는 칸은 없습니다.)
 - 자기 주문끼리는 체결되지 않습니다.
 
 ### `POST /api/rooms/{code}/orders/cancel` — 주문 취소 *(참가자)*
 ```jsonc
-{ "code": "YON", "orderId": "o812" }
+{ "code": "SKH", "orderId": "o812" }
 ```
 ```json
 { "cancelled": 60 }
@@ -292,9 +297,9 @@ PORT=8080 node server.js
 ### `GET /api/rooms/{code}/state` — 폴링 폴백
 SSE 를 못 쓰는 환경용. `{ "snapshot": {...}, "me": {...} }`. 토큰이 없으면 `me` 가 없습니다.
 
-### `GET /api/rooms/{code}/chart?code=SNU` — 가격 이력
+### `GET /api/rooms/{code}/chart?code=SEC` — 가격 이력
 ```json
-{ "stocks": [ { "code": "SNU", "name": "서울대", "color": "#1b3f7a",
+{ "stocks": [ { "code": "SEC", "name": "삼성전자", "color": "#1b3f7a",
   "history": [ { "t": 0, "price": 1240, "fair": 1200 }, { "t": 1, "price": 1245, "fair": 1201 } ] } ] }
 ```
 `t` 는 게임 시작으로부터의 초. **1초에 한 점**씩 쌓이고 최대 1800점입니다.
@@ -306,11 +311,11 @@ SSE 를 못 쓰는 환경용. `{ "snapshot": {...}, "me": {...} }`. 토큰이 �
   "phase": "ended", "endedAt": 1789201076969,
   "ranking":      [ { "rank": 1, "id": "b7", "name": "차트왕", "isBot": true, "nav": 4120000, "pnl": 1620000, "pnlPct": 64.8 } ],
   "humanRanking": [ { "rank": 1, "id": "p1_6ze7", "name": "앨리스", "isBot": false, "nav": 3688125, "pnl": 688125, "pnlPct": 22.9 } ],
-  "stocks": [ { "code": "SNU", "name": "서울대", "open": 1240, "last": 1105, "fair": 1396,
+  "stocks": [ { "code": "SEC", "name": "삼성전자", "open": 1240, "last": 1105, "fair": 1396,
                 "high": 1310, "low": 1080, "volume": 13100, "issued": 7371, "changePct": -10.9 } ],
   "feesCollected": 41200,
-  "newsLog": [ { "id": "n412_a1b", "code": "SNU", "name": "서울대", "sign": 1,
-                 "headline": "서울대 대량 매수 유입 — 매도 호가 공백",
+  "newsLog": [ { "id": "n412_a1b", "code": "SEC", "name": "삼성전자", "sign": 1,
+                 "headline": "삼성전자 대량 매수 유입 — 매도 호가 공백",
                  "impactPct": 8.4, "atSec": 103, "priceAt": 1240 } ]
 }
 ```
@@ -360,7 +365,7 @@ es.addEventListener('state', (e) => {
               "inflationPerMin": 0.05, "durationMin": 15, "ipoSec": 45 },
 
   "stocks": [{
-    "code": "SNU", "name": "서울대", "color": "#1b3f7a",
+    "code": "SEC", "name": "삼성전자", "color": "#1b3f7a",
     "last": 1105,                // 최종 체결가 — 체결로만 움직인다
     "fair": 1396,                // 적정가 — 인플레이션과 개별 실적이 반영된 이론가(공개 정보)
     "open": 1110, "high": 1110, "low": 1100,
@@ -377,8 +382,8 @@ es.addEventListener('state', (e) => {
   }],
 
   "news": [{                     // 지금 효력이 살아 있는 돌발뉴스 (없으면 빈 배열)
-    "id": "n1366_jq3m", "code": "HYU", "name": "한양대", "sign": -1,
-    "headline": "한양대 차익실현 매물 출회",
+    "id": "n1366_jq3m", "code": "HMC", "name": "현대차", "sign": -1,
+    "headline": "현대차 차익실현 매물 출회",
     "impactPct": -6.9,           // 적정가에 준 충격
     "ageSec": 12, "lifeSec": 90  // 뜬 지 12초, 총 90초간 유효
   }],
@@ -386,7 +391,7 @@ es.addEventListener('state', (e) => {
   "ranking": [ { "rank": 1, "id": "p1_6ze7", "name": "앨리스", "isBot": false,
                  "nav": 3688125, "pnl": 688125, "pnlPct": 22.94 } ],   // 상위 20명까지만
   "notices": [ { "seq": 164, "ts": 1789201076966, "text": "무상증자 5% — 보유 주식 2,810주 추가 배정", "kind": "bonus" } ],
-  "tape":    [ { "seq": 191, "code": "HYU", "price": 1765, "qty": 10, "side": "buy", "t": 128 } ]
+  "tape":    [ { "seq": 191, "code": "HMC", "price": 1765, "qty": 10, "side": "buy", "t": 128 } ]
 }
 ```
 
@@ -412,22 +417,22 @@ es.addEventListener('state', (e) => {
   "realized": 41000,             // 실현손익
 
   "holdings": [{                 // 수량 0인 종목은 빠집니다
-    "code": "SNU", "name": "서울대",
+    "code": "SEC", "name": "삼성전자",
     "qty": 1125, "free": 1125, "locked": 0,   // locked = 미체결 매도 주문에 묶인 수량
     "avgPrice": 493, "last": 1105,
     "evalAmount": 1243125, "pnl": 688125, "pnlPct": 123.99
   }],
 
   "tradable": [{                 // 참여 종목 전체. 지금 낼 수 있는 최대 수량
-    "code": "SNU", "name": "서울대", "last": 1105,
+    "code": "SEC", "name": "삼성전자", "last": 1105,
     "maxBuyQty": 2210,           // 현재가 기준, 수수료 포함해서 살 수 있는 최대 (lotSize 배수)
     "maxSellQty": 1120           // 미체결 매도에 묶이지 않은 보유분 (lotSize 배수)
   }],
 
-  "openOrders": [ { "id": "o812", "code": "YON", "name": "연세대",
+  "openOrders": [ { "id": "o812", "code": "SKH", "name": "SK하이닉스",
                     "side": "buy", "price": 2480, "qty": 60 } ],
 
-  "newFills": [ { "seq": 7, "ts": 1789201076966, "code": "SNU", "name": "서울대",
+  "newFills": [ { "seq": 7, "ts": 1789201076966, "code": "SEC", "name": "삼성전자",
                   "side": "buy", "price": 1105, "qty": 100, "amount": 110500, "tag": null } ],
   "fillSeq": 7
 }

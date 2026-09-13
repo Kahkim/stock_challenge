@@ -28,7 +28,7 @@ function test(name, fn) {
   catch (e) { fail++; console.log('  \x1b[31m✗\x1b[0m ' + name + '\n      ' + e.message); }
 }
 
-const CFG = { stockCodes: ['SNU', 'YON'], botCount: 2, ipoSec: 5, durationMin: 1 };
+const CFG = { stockCodes: ['SEC', 'SKH'], botCount: 2, ipoSec: 5, durationMin: 1 };
 const ROOT = path.join(__dirname, '..');
 const HOUR = 3600 * 1000;
 
