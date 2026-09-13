@@ -1,0 +1,12 @@
+# Package list for conda (NOT pip format).
+# This project has no Python code; it only needs the Node.js runtime.
+# Keep this file ASCII-only: conda reads it with the OS locale encoding,
+# and non-ASCII comments break "conda install --file" on Korean Windows (cp949).
+#
+# Usage:
+#   conda create -n stock-challenge --file requirements.txt
+#   conda activate stock-challenge
+#   npm test && node server.js
+
+# package.json engines: node >= 18
+conda-forge::nodejs>=18
