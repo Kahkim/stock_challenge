@@ -215,6 +215,7 @@ const CFG = {
   get salaryIntervalSec(){return cfgv('salaryIntervalSec',60);},
   get inflationPerMin(){return cfgv('inflationPerMin',0.005);},
   get maxBonusRate(){return cfgv('maxBonusRate',0.05);},
+  get openPremium(){return cfgv('openPremium',0);},
   get durationMin(){return cfgv('durationMin',15);},
   get ipoSec(){return cfgv('ipoSec',45);},
 };
@@ -673,7 +674,9 @@ function vSetup(){
     <div><div class="lbl">정규장 길이</div>${seg('dur',[{v:5,t:'5분'},{v:10,t:'10분'},{v:15,t:'15분'}],U.dur)}</div>
     <div><div class="lbl">개장 공모</div>${seg('ipoSec',[{v:30,t:'30초'},{v:45,t:'45초'},{v:60,t:'60초'}],U.ipoSec)}
       <div class="hint">${svg(iBolt,16,'var(--warn)',1.5)}
-        <span>전원 <b style="color:var(--text)">주식 0주</b>로 시작합니다. 청약하지 않으면 무상증자를 한 주도 못 받아 수익률이 0%에 고정돼요.
+        <span>전원 <b style="color:var(--text)">주식 0주</b>로 시작합니다. ${CFG.openPremium>0
+          ? `시초가는 공모가보다 ${(CFG.openPremium*100).toFixed(0)}% 높게 열리니 청약하지 않으면 그 차이를 영영 못 받아요.`
+          : `청약하지 않으면 무상증자를 한 주도 못 받아 수익률이 0%에 고정돼요.`}
         주식이 시장에 풀리는 유일한 통로라 공모는 끌 수 없습니다.</span></div></div>
     <div><div class="lbl">1인당 시작 현금</div>${seg('seed',[{v:500000,t:'50만'},{v:1000000,t:'100만'},{v:5000000,t:'500만'}],U.seed)}</div>
     <div><div class="lbl">봇</div>${seg('bots',[{v:10,t:'10'},{v:30,t:'30'},{v:60,t:'60'}],U.bots)}
@@ -682,7 +685,7 @@ function vSetup(){
   </div>
   <div class="sticky"><button class="cta" data-act="create" ${U.codes.length<2||U.busy?'disabled':''}>${U.busy?'만드는 중…':'방 만들기'}</button>
     <div style="text-align:center;font-size:11px;color:var(--dim2);margin-top:10px">
-      월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${(CFG.inflationPerMin*100).toFixed(1)}%/분 · 무상증자 최대 ${(CFG.maxBonusRate*100).toFixed(0)}% · ${CFG.lotSize}주 단위 · 수수료 ${(CFG.feeRate*100).toFixed(2)}%</div></div>`;
+      월급 ${n(CFG.salaryAmount)}/분 · 인플레 ${(CFG.inflationPerMin*100).toFixed(1)}%/분${CFG.openPremium>0?` · 시초가 프리미엄 +${(CFG.openPremium*100).toFixed(0)}%`:''}${CFG.maxBonusRate>0?` · 무상증자 최대 ${(CFG.maxBonusRate*100).toFixed(0)}%`:''} · ${CFG.lotSize}주 단위 · 수수료 ${(CFG.feeRate*100).toFixed(2)}%</div></div>`;
 }
 
 /* ---- 1-1. 로비 ---- */
@@ -766,8 +769,10 @@ function vIpo(snap,me){
       border-radius:14px;padding:14px 16px">
       <div style="flex-shrink:0;margin-top:1px">${svg(iBolt,20,'var(--warn)',1.5)}</div>
       <div><div style="font-size:14px;font-weight:700;color:var(--warn)">청약하지 않으면 주식 0주로 시작합니다</div>
-      <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:5px">주식이 없으면 매분 들어오는
-        <b style="color:var(--text)">무상증자를 한 주도 받지 못하고</b>, 인플레로 오르는 값도 못 탑니다.</div></div></div></div>
+      <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:5px">${CFG.openPremium>0
+        ? `공모가는 기준가지만 시초가는 <b style="color:var(--text)">적정가(기준가 +${(CFG.openPremium*100).toFixed(0)}%)</b>에서 열립니다.
+           청약한 사람만 그 차이를 얻고, 주식이 없으면 뉴스와 인플레로 오르는 값도 못 탑니다.`
+        : `주식이 없으면 매분 들어오는 <b style="color:var(--text)">무상증자를 한 주도 받지 못하고</b>, 인플레로 오르는 값도 못 탑니다.`}</div></div></div></div>
   <div style="display:flex;align-items:center;padding:22px 16px 10px">
     <div class="grow" style="font-size:14px;font-weight:700">종목별 청약 현황</div>
     <div class="m" style="font-size:11px;color:var(--dim2)">예치 ${n(reserved)}</div></div>
@@ -1251,7 +1256,7 @@ function vPortfolio(snap,me){
   : `<div class="pad"><div class="card" style="padding:24px 20px;text-align:center">
       <div style="font-size:14px;font-weight:600;color:var(--dim)">보유한 주식이 없습니다</div>
       <div style="font-size:12px;color:var(--dim2);line-height:1.6;margin-top:8px">
-        주식이 없으면 매분 들어오는 무상증자를 한 주도 받지 못합니다.<br>시황에서 종목을 골라 매수해 보세요.</div>
+        ${CFG.maxBonusRate>0? '주식이 없으면 매분 들어오는 무상증자를 한 주도 받지 못합니다.' : '주식이 없으면 뉴스와 인플레로 오르는 값을 못 탑니다.'}<br>시황에서 종목을 골라 매수해 보세요.</div>
       <button data-act="go" data-v="market" class="cta" style="height:48px;margin-top:16px">시황으로</button></div></div>`}
 
   <div class="pad" style="padding-top:22px;padding-bottom:10px">

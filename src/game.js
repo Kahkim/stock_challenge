@@ -1,6 +1,6 @@
 'use strict';
 
-const { STOCK_POOL, DEFAULTS, roundToTick, floorToTick } = require('./config');
+const { STOCK_POOL, DEFAULTS, roundToTick, floorToTick, tickSize } = require('./config');
 const { OrderBook, Order, bumpSeq } = require('./orderbook');
 const Bots = require('./bots');
 const News = require('./news');
@@ -26,6 +26,9 @@ function gauss(rnd) {
 
 const PHASE = { LOBBY: 'lobby', IPO: 'ipo', TRADING: 'trading', ENDED: 'ended' };
 
+/** 시장조성자(실권주 보유·양방향 호가)의 참가자 id. 순위·월급·봇 행동에서 제외되는 '시스템' 참가자다. */
+const MM_ID = '__mm__';
+
 /** 코드가 붙은 오류 — 화면에서 상황별로 다르게 안내할 수 있도록 한다. */
 function err(code, message) {
   const e = new Error(message);
@@ -37,6 +40,7 @@ class Game {
   constructor(config = {}, seed = 1) {
     const cfg = { ...DEFAULTS, ...config };
     cfg.botMix = { ...DEFAULTS.botMix, ...(config.botMix || {}) };
+    cfg.marketMaker = { ...DEFAULTS.marketMaker, ...(config.marketMaker || {}) };
     this.cfg = cfg;
     this.rnd = makeRng(seed);
     this.phase = PHASE.LOBBY;
@@ -64,14 +68,18 @@ class Game {
       name: s.name,
       color: s.color,
       initialPrice: s.initialPrice,
-      fair: s.initialPrice,      // 적정가 — 인플레이션과 개별 실적이 반영된 이론가. 참가자에게 공개된다.
+      // 적정가 — 개별 실적(뉴스)이 반영된 이론가. 참가자에게 공개된다.
+      // 공모 기준가보다 openPremium 만큼 높게 출발한다 — 공모에 참여한 사람이 얻는 할인폭이다.
+      fair: s.initialPrice * (1 + (cfg.openPremium || 0)),
+      ref: s.initialPrice * (1 + (cfg.openPremium || 0)),   // 시장조성자 기준가 — 적정가를 천천히 따라간다
+      ipoPrice: s.initialPrice,  // 공모가(배정가). 공모가 끝나면 확정된다
       last: s.initialPrice,      // 최종 체결가. 오직 체결로만 움직인다.
       open: s.initialPrice,
       high: s.initialPrice,
       low: s.initialPrice,
       volume: 0,
       float: 0,                  // 발행주식수 — 참가자 수가 정해진 뒤 계산
-      issued: 0,                 // 공모로 실제 배정된 수량
+      issued: 0,                 // 유통 주식 수 — 공모 배정분 + 시장조성자가 장중에 판 실권주 (+ 무상증자)
       book: new OrderBook(s.code),
       history: [],               // {t, price, fair}
       ipoBids: [],
@@ -139,6 +147,73 @@ class Game {
   }
 
   humans() { return [...this.players.values()].filter(p => !p.isBot && !p.kicked); }
+  /** 순위·월급·총량 계산에 들어가는 참가자(시스템 참가자 제외) */
+  participants() { return [...this.players.values()].filter(p => !p.system); }
+  isSystemOrder(o) { const p = this.players.get(o.owner); return !!(p && p.system); }
+
+  /**
+   * 시장조성자 — 공모에서 안 팔린 실권주를 들고 적정가 주변에 양방향 호가를 댄다.
+   *
+   * 이게 없으면 사람들의 시장가 매수가 얇은 매도 호가를 사다리째 쓸어 올리고, 그 체결가가
+   * 곧 전원의 평가액이 되어 '아무거나 빨리 다 사는' 쪽이 이긴다(실측: 매도 호가 49% 공백,
+   * 막사기 33명 중 4.3등). 시장조성자가 적정가 ±band 에 두꺼운 호가를 대면 시세는 이 밴드 안에서만
+   * 움직이고, 종목 간 차이는 뉴스(적정가 변화)로만 생긴다.
+   *
+   * 기준가(ref)는 적정가를 lagSec 시정수로 천천히 따라간다. 뉴스로 적정가가 뛰어도 호가는 옛 값
+   * 근처에서 시작해 몇 분에 걸쳐 올라가므로, 먼저 본 사람이 싸게 사고 늦게 올라탄 사람은
+   * 남은 상승분만 가져간다. 봇의 시차 동조와 함께 '선점 보상 곡선'을 만든다.
+   *
+   * 호가만 건다(체결을 먹지 않는다) — 악재로 기준가가 내려도 스스로 시세를 무너뜨리지 않는다.
+   * 판 대금은 자기 현금이 되어 매수 호가의 재원이 된다. 순위·월급·총량 계산에서는 빠진다.
+   */
+  _marketMaker() {
+    const mm = this.cfg.marketMaker;
+    if (!mm || !mm.enabled || !(mm.band > 0)) return;
+    const X = this.players.get(MM_ID);
+    if (!X) return;
+    const k = mm.band, lot = this.cfg.lotSize;
+    const alpha = mm.lagSec > 0 ? Math.min(1, (this.cfg.tickMs / 1000) / mm.lagSec) : 1;
+    for (const s of this.stocks) {
+      s.ref += (s.fair - s.ref) * alpha;
+      const bb = s.book.bestBid(), ba = s.book.bestAsk();
+      // 남의 호가와 겹치면 한 단계 물러선다 — 남의 주문을 먹는 쪽이 아니라 대주는 쪽이어야 한다
+      let ask = roundToTick(s.ref * (1 + k));
+      if (bb !== null && ask <= bb) ask = bb + tickSize(bb);
+      let bid = floorToTick(s.ref * (1 - k));
+      if (ba !== null && bid >= ba) bid = Math.max(tickSize(ba), ba - tickSize(ba));
+      // 기준가에서 벗어난 자기 호가는 걷어낸다
+      let haveAsk = false, haveBid = false;
+      for (const o of s.book.openOrders(X.id)) {
+        const want = o.side === 'sell' ? ask : bid;
+        if (o.price === want) { if (o.side === 'sell') haveAsk = true; else haveBid = true; continue; }
+        const c = s.book.cancel(o.id);
+        if (!c) continue;
+        if (c.side === 'sell') X.holdings[s.code] = (X.holdings[s.code] || 0) + c.qty;
+        else X.cash += this._buyReserve(c.price, c.qty);
+      }
+      const slice = Math.floor((s.float * (mm.slice || 0.02)) / lot) * lot;
+      if (!haveAsk) {
+        const qty = Math.min(slice, Math.floor((X.holdings[s.code] || 0) / lot) * lot);
+        if (qty >= lot) { try { this.submitOrder(X.id, s.code, 'sell', ask, qty); } catch (_) {} }
+      }
+      if (!haveBid && bid > 0) {
+        const budget = X.cash / this.stocks.length;
+        const qty = Math.min(slice, Math.floor(budget / this._buyReserve(bid, 1) / lot) * lot);
+        if (qty >= lot) { try { this.submitOrder(X.id, s.code, 'buy', bid, qty); } catch (_) {} }
+      }
+    }
+  }
+
+  /** 유통 주식 수 = 발행량 − 시장조성자가 아직 들고 있는 물량(호가에 걸어둔 것 포함). 틱 끝에 갱신한다. */
+  _refreshIssued() {
+    const X = this.players.get(MM_ID);
+    if (!X) return;
+    for (const s of this.stocks) {
+      let held = X.holdings[s.code] || 0;
+      for (const o of s.book.asks) if (o.owner === X.id) held += o.qty;
+      s.issued = s.float - held;
+    }
+  }
 
   // ── 시작 ──────────────────────────────────────────────────────
   start() {
@@ -148,7 +223,7 @@ class Game {
 
     // 발행주식수: 전체 시드머니의 floatCapitalRatio 만큼을 종목 수로 나눠 시가총액을 균등 배분한다.
     // 초기가가 낮은 종목일수록 주식수가 많아지므로 저가주가 유리해지지 않는다.
-    const totalSeed = this.players.size * this.cfg.seedMoney;
+    const totalSeed = this.participants().length * this.cfg.seedMoney;
     const capPerStock = (totalSeed * this.cfg.floatCapitalRatio) / this.stocks.length;
     for (const s of this.stocks) {
       s.float = Math.max(this.cfg.lotSize,
@@ -219,8 +294,8 @@ class Game {
   /** 한 종목의 총 유통주식 (미체결 매도 예약분 포함) */
   _totalShares(s) {
     let q = 0;
-    for (const p of this.players.values()) q += (p.holdings[s.code] || 0);
-    for (const o of s.book.asks) q += o.qty;
+    for (const p of this.players.values()) if (!p.system) q += (p.holdings[s.code] || 0);
+    for (const o of s.book.asks) if (!this.isSystemOrder(o)) q += o.qty;
     return q;
   }
 
@@ -234,7 +309,7 @@ class Game {
    */
   _issueBonusShares() {
     if (!this.cfg.bonusShares) return;
-    const cashAdded = this.cfg.salaryAmount * this.players.size;
+    const cashAdded = this.cfg.salaryAmount * this.participants().length;
     if (!(cashAdded > 0)) return;
     let stockValue = 0;
     for (const s of this.stocks) stockValue += this._totalShares(s) * s.last;
@@ -246,6 +321,7 @@ class Game {
     for (const s of this.stocks) {
       let add = 0;
       for (const p of this.players.values()) {
+        if (p.system) continue;
         const held = p.holdings[s.code] || 0;
         if (held <= 0) continue;
         const bonus = Math.floor(held * rate);
@@ -295,11 +371,17 @@ class Game {
     const due = Math.floor(used / iv);
     if (due <= this._salaryCount) return;
     this._salaryCount = due;
+    // 현금 이자 — 월급과 같은 주기로 보유 현금에 붙는다. 투입액(salaryTotal)에는 넣지 않는다(수익이다).
+    const ir = this.cfg.cashInterestPerMin > 0 ? this.cfg.cashInterestPerMin * (iv / 60) : 0;
     for (const p of this.players.values()) {
+      if (p.system) continue;
+      if (ir > 0) p.cash += Math.floor(p.cash * ir);
       p.cash += this.cfg.salaryAmount;
       p.salaryTotal += this.cfg.salaryAmount;
     }
-    this._notice(`월급 ${this.cfg.salaryAmount.toLocaleString()}원 지급`, 'salary');
+    this._notice(ir > 0
+      ? `월급 ${this.cfg.salaryAmount.toLocaleString()}원 지급 + 현금 이자 ${(ir * 100).toFixed(1)}%`
+      : `월급 ${this.cfg.salaryAmount.toLocaleString()}원 지급`, 'salary');
     this._issueBonusShares();
   }
 
@@ -324,13 +406,10 @@ class Game {
   /** 시장 전체의 현금 비중. 봇의 목표 비중 기준점이 된다. */
   _marketCashRatio() {
     let cash = 0, stock = 0;
-    for (const p of this.players.values()) cash += p.cash;
+    for (const p of this.players.values()) if (!p.system) cash += p.cash;
     for (const s of this.stocks) {
-      for (const o of s.book.bids) cash += this._buyReserve(o.price, o.qty);
-      let q = 0;
-      for (const p of this.players.values()) q += (p.holdings[s.code] || 0);
-      for (const o of s.book.asks) q += o.qty;
-      stock += q * s.last;
+      for (const o of s.book.bids) if (!this.isSystemOrder(o)) cash += this._buyReserve(o.price, o.qty);
+      stock += this._totalShares(s) * s.last;
     }
     const tot = cash + stock;
     return tot > 0 ? cash / tot : 0.5;
@@ -361,7 +440,7 @@ class Game {
   _runBots() {
     const ctx = this._botCtx();
     for (const p of this.players.values()) {
-      if (!p.isBot) continue;
+      if (!p.isBot || p.system) continue;
       if (this.rnd() > this.cfg.botActionRate) continue;
       const orders = Bots.decide(p, ctx) || [];
       for (const d of orders) {
@@ -442,15 +521,30 @@ class Game {
         p.cash += b.price * b.qty - clearing * take;   // 낙찰 차액 + 미배정분 환급
       }
       s.issued = s.float - remain;
-      s.last = clearing; s.open = clearing; s.high = clearing; s.low = clearing;
+      s.ipoPrice = clearing;
+      // 시초가 프리미엄이 있으면 시초가는 공모가가 아니라 적정가에서 열린다 — 공모 참여자가 그 차이를 개장 순간 얻는다.
+      // 없으면 예전처럼 공모가(청약 결과)가 곧 시초가다.
+      const openPx = this.cfg.openPremium > 0 ? roundToTick(s.fair) : clearing;
+      s.last = openPx; s.open = openPx; s.high = openPx; s.low = openPx;
       s.ipoBids = [];
       const ratio = cum / Math.max(1, s.float);
       this._notice(s.issued > 0
         ? `${s.name} 공모가 ${clearing.toLocaleString()}원 확정 (청약 ${ratio.toFixed(1)}배, ${s.issued.toLocaleString()}주 배정)`
         : `${s.name} 공모 미달 — 시초가 ${clearing.toLocaleString()}원`, 'ipo');
     }
+    this._spawnMarketMaker();
     this.phase = PHASE.TRADING;
     this._notice('장이 열렸습니다', 'open');
+  }
+
+  /** 시장조성자를 만든다. 공모에서 안 팔린 실권주를 넘겨받고 현금은 0에서 시작한다. */
+  _spawnMarketMaker() {
+    const mm = this.cfg.marketMaker;
+    if (!mm || !mm.enabled || this.players.has(MM_ID)) return;
+    const X = this._newPlayer(MM_ID, '시장조성자', true, 'system');
+    X.system = true;
+    X.cash = 0;
+    for (const s of this.stocks) X.holdings[s.code] = Math.max(0, s.float - s.issued);
   }
 
   // ── 주문 ──────────────────────────────────────────────────────
@@ -638,7 +732,7 @@ class Game {
     const locked = this._lockedMap();
     const base = this.cfg.seedMoney;
     const rows = [...this.players.values()]
-      .filter(p => !p.kicked)
+      .filter(p => !p.kicked && !p.system)
       .filter(p => inc || !p.isBot)
       .map(p => {
         const invested = base + p.salaryTotal;
@@ -667,7 +761,7 @@ class Game {
       elapsedSec: Math.round(this.elapsedSec),
       ipoRemainSec: Math.round(this.ipoRemainSec),
       remainSec: Math.round(this.tradeRemainSec),
-      playerCount: this.players.size,
+      playerCount: this.participants().length,
       paused: this.paused,
       connections: this.connections,
       feesCollected: Math.round(this.feesCollected),
@@ -680,11 +774,12 @@ class Game {
         lotSize: this.cfg.lotSize, feeRate: this.cfg.feeRate,
         seedMoney: this.cfg.seedMoney, salaryAmount: this.cfg.salaryAmount,
         salaryIntervalSec: this.cfg.salaryIntervalSec, inflationPerMin: this.cfg.inflationPerMin,
+        maxBonusRate: this.cfg.maxBonusRate, openPremium: this.cfg.openPremium,
         durationMin: this.cfg.durationMin, ipoSec: this.cfg.ipoSec,
       },
       stocks: this.stocks.map(s => ({
         code: s.code, name: s.name, color: s.color,
-        last: s.last, fair: Math.round(s.fair), open: s.open,
+        last: s.last, fair: Math.round(s.fair), open: s.open, ipoPrice: s.ipoPrice,
         high: s.high, low: s.low, volume: s.volume,
         float: s.float, issued: s.issued,
         changePct: s.open ? (s.last / s.open - 1) * 100 : 0,
@@ -778,7 +873,7 @@ class Game {
       endedAt: this.endedAt,
       paused: this.paused,
       stocks: this.stocks.map(s => ({
-        code: s.code, fair: s.fair, last: s.last, open: s.open,
+        code: s.code, fair: s.fair, ref: s.ref, ipoPrice: s.ipoPrice, last: s.last, open: s.open,
         high: s.high, low: s.low, volume: s.volume, float: s.float, issued: s.issued,
         history: s.history.slice(-600),
         ipoBids: s.ipoBids,
@@ -786,7 +881,7 @@ class Game {
         asks: s.book.asks.map(o => ({ id: o.id, seq: o.seq, side: o.side, price: o.price, qty: o.qty, owner: o.owner, ts: o.ts })),
       })),
       players: [...this.players.values()].map(p => ({
-        id: p.id, name: p.name, isBot: p.isBot, botType: p.botType,
+        id: p.id, name: p.name, isBot: p.isBot, botType: p.botType, system: !!p.system,
         cash: p.cash, holdings: p.holdings, costBasis: p.costBasis, costQty: p.costQty,
         realized: p.realized, salaryTotal: p.salaryTotal, kicked: p.kicked,
         fillSeq: p.fillSeq, fills: p.fills.slice(-40),
@@ -813,6 +908,7 @@ class Game {
     this.players.clear();
     for (const q of d.players || []) {
       const p = this._newPlayer(q.id, q.name, q.isBot, q.botType);
+      if (q.system) p.system = true;
       p.cash = q.cash; p.holdings = q.holdings || {};
       p.costBasis = q.costBasis || {}; p.costQty = q.costQty || {};
       p.realized = q.realized || 0; p.salaryTotal = q.salaryTotal || 0;
@@ -823,7 +919,9 @@ class Game {
       const s = this.stockByCode.get(sd.code);
       if (!s) continue;
       Object.assign(s, {
-        fair: sd.fair, last: sd.last, open: sd.open, high: sd.high, low: sd.low,
+        fair: sd.fair, ref: sd.ref !== undefined ? sd.ref : sd.fair,
+        ipoPrice: sd.ipoPrice !== undefined ? sd.ipoPrice : sd.open,
+        last: sd.last, open: sd.open, high: sd.high, low: sd.low,
         volume: sd.volume, float: sd.float, issued: sd.issued,
         history: sd.history || [], ipoBids: sd.ipoBids || [],
       });
@@ -854,7 +952,9 @@ class Game {
     this._updateFair();
     this._updateNews();
     this._applySalary();
+    this._marketMaker();
     this._runBots();
+    this._refreshIssued();
     this._recordHistory();
     if (this.tradeRemainSec <= 0) this._end();
   }
@@ -871,10 +971,11 @@ class Game {
       s.book.bids.length = 0;
       s.book.asks.length = 0;
     }
+    this._refreshIssued();
     this.phase = PHASE.ENDED;
     this.endedAt = Date.now();
     this._notice('장이 마감되었습니다', 'close');
   }
 }
 
-module.exports = { Game, PHASE, makeRng, gauss, err };
+module.exports = { Game, PHASE, MM_ID, makeRng, gauss, err };

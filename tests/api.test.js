@@ -535,9 +535,9 @@ async function main() {
     // 복구한 판을 계속 돌려도 주식 총량이 유지된다
     for (let i = 0; i < 200; i++) g2.tick();
     for (const s of g2.stocks) {
-      let t = 0;
-      for (const p of g2.players.values()) t += (p.holdings[s.code] || 0);
-      for (const o of s.book.asks) t += o.qty;
+      let t = 0;   // 시장조성자가 든 실권주는 아직 유통되지 않은 주식이라 뺀다
+      for (const p of g2.players.values()) if (!p.system) t += (p.holdings[s.code] || 0);
+      for (const o of s.book.asks) if (!g2.isSystemOrder(o)) t += o.qty;
       assert.strictEqual(t, s.issued, `${s.name} 복구 후 진행 중 총량이 깨졌다`);
     }
     for (const r of store2.rooms.values()) r.stopTimer();

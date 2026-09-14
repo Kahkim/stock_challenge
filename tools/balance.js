@@ -8,6 +8,7 @@
  *   node tools/balance.js --curve            # 뉴스에 늦게 반응할수록 얼마나 손해인지 (선점 보상 곡선)
  *   node tools/balance.js --humans 33 --bots 50 --stocks 6 --min 15 --trials 24 --seed 31337
  *   node tools/balance.js --set salaryAmount=200000 --set maxBonusRate=0.15 --set news.lifeSec=60
+ *   node tools/balance.js --preset marketMaker      # config.js 의 PRESETS 묶음(시장조성자 경제)으로 잰다
  *
  * 설정을 바꿨을 때 게임이 여전히 의도대로 굴러가는지 확인한다.
  *
@@ -29,7 +30,7 @@
  *   · 전액투자(매분 월급 전부 전 종목에) · 막사기(무작위 종목만 사기) · 막사고팔기 · 상시투자+뉴스대응(유능) · 한종목 몰빵
  */
 const { Game, makeRng } = require('../src/game');
-const { DEFAULTS, STOCK_POOL } = require('../src/config');
+const { DEFAULTS, PRESETS, STOCK_POOL } = require('../src/config');
 
 const argv = process.argv.slice(2);
 const has = (name) => argv.includes('--' + name);
@@ -49,10 +50,21 @@ for (let i = 0; i < argv.length; i++) {
     o[path[path.length - 1]] = val;
   }
 }
+// --preset 이름 : config.js 의 PRESETS 묶음을 먼저 깔고, 그 위에 --set 을 얹는다
+const presetName = arg('preset', '');
+if (presetName) {
+  if (!PRESETS[presetName]) { console.error(`모르는 프리셋 ${presetName} — ${Object.keys(PRESETS).join(', ')}`); process.exit(2); }
+  const P = PRESETS[presetName];
+  for (const k of Object.keys(P)) {
+    if (P[k] && typeof P[k] === 'object' && overrides[k] && typeof overrides[k] === 'object') overrides[k] = { ...P[k], ...overrides[k] };
+    else if (overrides[k] === undefined) overrides[k] = P[k];
+  }
+}
 // Game 은 설정을 얕게 합치므로(botMix 만 깊게) 중첩 객체는 기본값에서 출발해 해당 키만 바꾼다 —
 // 아니면 news.enabled 가 사라져 뉴스가 통째로 꺼진다.
 if (overrides.news) overrides.news = { ...DEFAULTS.news, ...overrides.news };
 if (overrides.botMix) overrides.botMix = { ...DEFAULTS.botMix, ...overrides.botMix };
+if (overrides.marketMaker) overrides.marketMaker = { ...DEFAULTS.marketMaker, ...overrides.marketMaker };
 
 const BOTS = Number(arg('bots', DEFAULTS.botCount));
 const NSTOCK = Number(arg('stocks', 6));
@@ -305,9 +317,17 @@ function jsonLine(M) {
   const ranks = {}, ses = {}, pnl = {}, verdicts = {};
   for (const k of STRATS) { ranks[k] = +acc[k].toFixed(2); ses[k] = +se(k).toFixed(2); pnl[k] = +acc['pnl_' + k].toFixed(1); }
   for (const [key, c] of judge(M)) verdicts[key] = c;
+  // 평균 등수만 보면 '평균으로는 꼴찌지만 여섯 판에 한 판은 상위권' 이 안 보인다.
+  // 판별로 상위 25% 에 든 비율(top)과 하위 25% 에 든 비율(bottom)을 같이 싣는다 — 행사장은 단판이다.
+  const quartile = {};
+  for (const k of STRATS) {
+    const xs = M.samples[k];
+    quartile[k] = { top: +(xs.filter(r => r <= humans * 0.25).length / xs.length).toFixed(2),
+                    bottom: +(xs.filter(r => r > humans * 0.75).length / xs.length).toFixed(2) };
+  }
   return 'JSON ' + JSON.stringify({
     humans, bots: BOTS, stocks: NSTOCK, minutes: MINUTES, trials: TRIALS, seed: SEED0, overrides,
-    ranks, se: ses, pnlPct: pnl,
+    ranks, se: ses, pnlPct: pnl, quartile,
     market: { noAsk: +acc.noAsk.toFixed(1), noBid: +acc.noBid.toFixed(1), pxChangePct: +((acc.px - 1) * 100).toFixed(1),
               vsFairPct: +acc.vsFair.toFixed(1), dispersionPct: +acc.disp.toFixed(1), ipoSub: +acc.ipoSub.toFixed(2),
               volume: Math.round(acc.vol), news: +acc.newsCount.toFixed(1) },

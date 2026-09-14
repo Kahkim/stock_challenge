@@ -19,7 +19,7 @@ const { RoomStore, ROOM_IDLE_MS, sweepIntervalMs } = require('./src/rooms');
 const { Limiter } = require('./src/ratelimit');
 const { Room } = require('./src/rooms');
 const persist = require('./src/persist');
-const { STOCK_POOL, DEFAULTS, tickSize } = require('./src/config');
+const { STOCK_POOL, DEFAULTS, PRESETS, tickSize } = require('./src/config');
 const { PHASE } = require('./src/game');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -247,6 +247,7 @@ async function route(req, res, url) {
     return send(res, 200, {
       stockPool: STOCK_POOL,
       defaults: DEFAULTS,
+      presets: PRESETS,          // 방 만들 때 config 에 펼쳐 넣을 수 있는 설정 묶음 (예: marketMaker 경제)
       tickSizeTable: [
         { under: 2000, tick: tickSize(1000) },
         { under: 5000, tick: tickSize(3000) },

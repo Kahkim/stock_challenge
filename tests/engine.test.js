@@ -7,7 +7,8 @@
  * 순위가 통째로 거짓이 된다.
  */
 const assert = require('assert');
-const { Game, PHASE } = require('../src/game');
+const { Game, PHASE, MM_ID } = require('../src/game');
+const { roundToTick, PRESETS } = require('../src/config');
 
 let pass = 0, fail = 0;
 function test(name, fn) {
@@ -15,12 +16,12 @@ function test(name, fn) {
   catch (e) { fail++; console.log('  \x1b[31m✗\x1b[0m ' + name + '\n      ' + e.message); }
 }
 
-/** 모든 참가자가 보유 + 미체결에 묶어둔 주식의 총합 */
+/** 모든 참가자가 보유 + 미체결에 묶어둔 주식의 총합. 시장조성자가 든 실권주는 아직 유통되지 않은 주식이라 뺀다 */
 function totalShares(g, code) {
   let t = 0;
-  for (const p of g.players.values()) t += (p.holdings[code] || 0);
+  for (const p of g.players.values()) if (!p.system) t += (p.holdings[code] || 0);
   const s = g.stockByCode.get(code);
-  for (const o of s.book.asks) t += o.qty;     // 매도 예약분
+  for (const o of s.book.asks) if (!g.isSystemOrder(o)) t += o.qty;     // 매도 예약분
   return t;
 }
 function totalCash(g) {
@@ -82,7 +83,8 @@ test('거래를 오래 돌려도 보유 주식 합계가 발행 장부와 일치
 });
 
 test('무상증자를 끄면 발행 주식 수가 전혀 변하지 않는다', () => {
-  const g = buildGame({ bonusShares: false });
+  // 시장조성자는 실권주를 장중에 팔아 유통량을 늘리므로 여기서는 끈다 — 보는 것은 '거래가 주식을 만들지 않는다'다
+  const g = buildGame({ bonusShares: false, marketMaker: { enabled: false } });
   runTicks(g, 45);
   const before = g.stocks.map(s => s.issued);
   runTicks(g, 600);
@@ -94,7 +96,7 @@ test('무상증자를 끄면 발행 주식 수가 전혀 변하지 않는다', (
 
 test('무상증자는 주식을 가진 사람에게만 배정된다 (무행동자는 0주)', () => {
   const g = new Game({ stockCodes: ['SEC', 'SKH'], botCount: 10, ipoSec: 5,
-                       durationMin: 5, tickMs: 250, salaryIntervalSec: 15 }, 3);
+                       durationMin: 5, tickMs: 250, salaryIntervalSec: 15, maxBonusRate: 0.05 }, 3);
   const idle = g.addPlayer('무행동').id;
   const act = g.addPlayer('적극').id;
   g.start();
@@ -286,7 +288,7 @@ test('순위표가 총자산 내림차순으로 정렬되고 봇을 제외할 �
   assert.strictEqual(human.length, 6);
   assert.ok(human.every(r => !r.isBot));
   for (let i = 1; i < human.length; i++) assert.ok(human[i - 1].nav >= human[i].nav);
-  assert.strictEqual(g.ranking(true).length, g.players.size);
+  assert.strictEqual(g.ranking(true).length, g.participants().length);   // 시장조성자는 순위에 없다
 });
 
 test('아무것도 안 한 사람은 하위권으로 밀린다', () => {
@@ -497,7 +499,7 @@ test('공모 미달이어도 최저 청약가가 아니라 기준가(하한)로 
   g.submitIpoBid(low, s.code, 5, 10);
   runTicks(g, 25);
   assert.strictEqual(g.phase, PHASE.TRADING);
-  assert.strictEqual(s.open, s.initialPrice, `공모가 ${s.open} — 기준가 ${s.initialPrice} 가 하한이어야 한다`);
+  assert.strictEqual(s.ipoPrice, s.initialPrice, `공모가 ${s.ipoPrice} — 기준가 ${s.initialPrice} 가 하한이어야 한다`);
   assert.strictEqual(g.players.get(fair).holdings[s.code], 100, '정상 청약이 전량 배정되지 않음');
   assert.strictEqual(g.players.get(fair).cash, 1_000_000 - s.initialPrice * 100, '기준가로 정산되지 않음');
   assert.strictEqual(g.players.get(low).holdings[s.code] || 0, 0, '하한 미만 청약이 배정됨');
@@ -514,10 +516,61 @@ test('공모 초과 청약이면 공모가는 하한 위에서 청약가 경쟁�
   g.submitIpoBid(a, s.code, hi, s.float);          // 혼자서 발행량을 다 가져간다
   g.submitIpoBid(b, s.code, lo, s.float);
   runTicks(g, 25);
-  assert.strictEqual(s.open, hi, `공모가 ${s.open} — 물량이 소진되는 청약가 ${hi} 여야 한다`);
+  assert.strictEqual(s.ipoPrice, hi, `공모가 ${s.ipoPrice} — 물량이 소진되는 청약가 ${hi} 여야 한다`);
   assert.strictEqual(g.players.get(a).holdings[s.code], s.float);
   assert.strictEqual(g.players.get(b).holdings[s.code] || 0, 0, '낮은 청약가가 배정됨');
   assert.strictEqual(g.players.get(b).cash, 1_000_000, '미배정 증거금이 환급되지 않음');
+});
+
+console.log('\n[시초가 프리미엄 · 시장조성자]');
+
+test('시초가는 공모가가 아니라 적정가(기준가 + 프리미엄)에서 열린다', () => {
+  const g = new Game({ stockCodes: ['SEC', 'SKH'], botCount: 4, ipoSec: 5, durationMin: 1,
+                       tickMs: 250, ...PRESETS.marketMaker }, 5);
+  const who = g.addPlayer('청약자').id;
+  g.start();
+  const s = g.stocks[0];
+  g.submitIpoBid(who, s.code, s.initialPrice, 100);
+  runTicks(g, 25);
+  assert.strictEqual(g.phase, PHASE.TRADING);
+  assert.strictEqual(s.ipoPrice, s.initialPrice, `공모가 ${s.ipoPrice} — 미달이면 기준가(하한)여야 한다`);
+  assert.strictEqual(s.open, roundToTick(s.initialPrice * 1.30), `시초가 ${s.open} — 적정가(기준가 +30%)여야 한다`);
+  const p = g.players.get(who);
+  assert.strictEqual(p.holdings[s.code], 100);
+  // 공모 참여자는 개장 순간 프리미엄만큼 평가익을 얻는다 (평가는 체결가 기준이라 시초가 = 첫 체결 전 last)
+  assert.ok(g.nav(p) > 1_000_000, `개장 직후 평가액 ${g.nav(p)} — 공모 참여자는 프리미엄을 얻어야 한다`);
+});
+
+test('시장조성자는 실권주를 들고 양방향 호가를 대며, 순위·월급·참가자 수에서는 빠진다', () => {
+  const g = buildGame({ salaryIntervalSec: 15, ...PRESETS.marketMaker });
+  runTicks(g, 45);
+  const mm = g.players.get(MM_ID);
+  assert.ok(mm && mm.system, '시장조성자가 없다');
+  assert.ok(g.stocks.every(s => (mm.holdings[s.code] || 0) + s.book.asks.filter(o => o.owner === MM_ID).reduce((a, o) => a + o.qty, 0) > 0),
+    '실권주를 넘겨받지 않았다');
+  // 실권주를 들고 있는 동안 매도 호가는 늘 있어야 한다. 매수 호가는 판 대금이 재원이라 팔고 난 뒤부터 생긴다.
+  let asked = 0, n = 0;
+  for (let i = 0; i < 400; i++) {
+    g.tick(); n++;
+    if (g.stocks.every(s => s.book.asks.some(o => o.owner === MM_ID))) asked++;
+  }
+  assert.ok(asked / n > 0.95, `시장조성자 매도 호가가 있는 틱 ${(asked / n * 100).toFixed(0)}% — 호가를 대지 않는다`);
+  assert.ok(mm.cash > 0, '실권주를 한 주도 못 팔았다');
+  assert.ok(g.stocks.some(s => s.book.bids.some(o => o.owner === MM_ID)), '판 대금으로 매수 호가를 대지 않는다');
+  assert.ok(g.ranking(true).every(r => r.id !== MM_ID), '시장조성자가 순위에 들어 있다');
+  assert.strictEqual(mm.salaryTotal, 0, '시장조성자가 월급을 받았다');
+  assert.strictEqual(g.snapshot().playerCount, g.players.size - 1, '참가자 수에 시장조성자가 들어 있다');
+  // 판 실권주만큼만 유통량이 늘고, 장부는 참가자 보유 + 참가자 매도 예약과 맞는다
+  for (const s of g.stocks) assert.strictEqual(totalShares(g, s.code), s.issued, `${s.name} 유통량 장부가 어긋난다`);
+});
+
+test('시장조성자는 기본으로 꺼져 있다 — 시스템 참가자가 없고 유통량은 공모 배정량 그대로다', () => {
+  const g = buildGame({ bonusShares: false });
+  runTicks(g, 45);
+  assert.ok(!g.players.has(MM_ID), '기본값(끔)인데 시장조성자가 생겼다');
+  const before = g.stocks.map(s => s.issued);
+  runTicks(g, 300);
+  g.stocks.forEach((s, i) => assert.strictEqual(s.issued, before[i]));
 });
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

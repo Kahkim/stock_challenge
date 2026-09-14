@@ -83,6 +83,15 @@ function sanitizeConfig(raw = {}) {
     bonusShares: raw.bonusShares === undefined ? DEFAULTS.bonusShares : !!raw.bonusShares,
     maxBonusRate: num(raw.maxBonusRate, DEFAULTS.maxBonusRate, 0, 5),
     inflationPerMin: num(raw.inflationPerMin, DEFAULTS.inflationPerMin, 0, 1),
+    cashInterestPerMin: num(raw.cashInterestPerMin, DEFAULTS.cashInterestPerMin, 0, 0.1),
+    openPremium: num(raw.openPremium, DEFAULTS.openPremium, 0, 2),
+    marketMaker: {
+      enabled: !raw.marketMaker || raw.marketMaker.enabled === undefined
+        ? DEFAULTS.marketMaker.enabled : !!raw.marketMaker.enabled,
+      band: num(raw.marketMaker && raw.marketMaker.band, DEFAULTS.marketMaker.band, 0.0005, 0.5),
+      lagSec: num(raw.marketMaker && raw.marketMaker.lagSec, DEFAULTS.marketMaker.lagSec, 0, 3600),
+      slice: num(raw.marketMaker && raw.marketMaker.slice, DEFAULTS.marketMaker.slice, 0.001, 1),
+    },
     idioVolatility: num(raw.idioVolatility, DEFAULTS.idioVolatility, 0, 3),
     durationMin: num(raw.durationMin, DEFAULTS.durationMin, 1, 180),
     ipoSec: Math.round(num(raw.ipoSec, DEFAULTS.ipoSec, 0, 600)),
