@@ -3,7 +3,7 @@
 <!-- 폰에서 페이지를 기기 폭으로 그린다. 이게 없으면 모바일 브라우저가 데스크톱 폭(약 980px)으로
      그린 뒤 화면에 맞게 축소해서 글자와 버튼이 전부 작아진다.
      viewport-fit=cover 는 노치 폰에서 env(safe-area-inset-*) 이 실제 값을 갖게 한다. -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0A0C10">
 <title>모의주식 챌린지</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230A0C10'/%3E%3Cpath d='M6 21l6-7 5 4 9-11' stroke='%23C6F24E' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
@@ -22,6 +22,8 @@
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
   body{overscroll-behavior-y:none}
+  /* 확대·축소 금지. 메타의 user-scalable=no 를 iOS 는 무시하므로 touch-action 과 아래 스크립트가 같이 막는다. */
+  html,body{touch-action:pan-y}
   a{color:var(--acc);text-decoration:none} a:hover{color:#DCFF8A}
   .m{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
   #app{max-width:430px;margin:0 auto;min-height:100vh;min-height:100dvh; /* dvh: 모바일 주소창을 뺀 실제 높이. 없는 브라우저는 앞의 vh 를 쓴다 */background:var(--bg);
@@ -47,14 +49,14 @@
 
   .lbl{font-size:12px;font-weight:600;color:var(--dim2);letter-spacing:.04em;margin-bottom:9px}
   .seg{display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:12px}
-  .seg button{flex:1;height:44px;display:flex;align-items:center;justify-content:center;border-radius:9px;
+  .seg button{flex:1;height:40px;display:flex;align-items:center;justify-content:center;border-radius:9px;
               color:var(--dim);font-size:14px;font-weight:500}
   .seg button[aria-pressed="true"]{background:var(--acc);color:var(--ink);font-weight:700}
   .card{background:var(--surf);border:1px solid var(--line);border-radius:14px}
-  .cta{height:56px;width:100%;display:flex;align-items:center;justify-content:center;border-radius:14px;
+  .cta{height:48px;width:100%;display:flex;align-items:center;justify-content:center;border-radius:14px;
        background:var(--acc);color:var(--ink);font-size:16px;font-weight:700}
   .cta[disabled]{background:var(--surf3);color:var(--dim2)}
-  .ghost{height:50px;display:flex;align-items:center;justify-content:center;border-radius:13px;
+  .ghost{height:46px;display:flex;align-items:center;justify-content:center;border-radius:13px;
          border:1px solid var(--line2);color:var(--dim);font-size:15px;font-weight:600}
   .hint{display:flex;gap:6px;align-items:flex-start;font-size:11px;color:var(--dim2);line-height:1.55;margin-top:9px}
   .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
@@ -63,17 +65,17 @@
   .grow{flex:1;min-width:0}
   .rt{text-align:right}
   .sticky{position:sticky;bottom:0;background:var(--surf);border-top:1px solid var(--line);
-          padding:12px 16px calc(16px + env(safe-area-inset-bottom));z-index:5}
-  .step{display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 14px;background:var(--bg);
+          padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:5}
+  .step{display:flex;align-items:center;gap:8px;height:42px;padding:0 5px 0 12px;background:var(--bg);
         border:1px solid var(--line2);border-radius:11px}
   .step .v{flex:1;text-align:right;font-size:17px;font-weight:700}
-  .step button{width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+  .step button{width:34px;height:34px;display:flex;align-items:center;justify-content:center;
                border-radius:8px;background:var(--surf3)}
   .chips{display:flex;gap:6px}
-  .chips button{flex:1;height:34px;white-space:nowrap;display:flex;align-items:center;justify-content:center;border-radius:8px;
+  .chips button{flex:1;height:30px;white-space:nowrap;display:flex;align-items:center;justify-content:center;border-radius:8px;
                 border:1px solid var(--line);color:var(--dim);font-size:11px;font-weight:600}
   .tabs{display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:12px;margin:0 16px}
-  .tabs button{flex:1;height:40px;display:flex;align-items:center;justify-content:center;border-radius:9px;
+  .tabs button{flex:1;height:36px;display:flex;align-items:center;justify-content:center;border-radius:9px;
                color:var(--dim2);font-size:14px;font-weight:500}
   .tabs button[aria-pressed="true"]{background:var(--surf3);color:var(--text);font-weight:700}
   .bar{height:3px;border-radius:2px;background:var(--surf3);display:flex;overflow:hidden}
@@ -108,25 +110,25 @@
   .modal{width:100%;max-width:398px;background:var(--surf);border:1px solid var(--line2);border-radius:20px;padding:20px;
          box-shadow:0 28px 70px rgba(0,0,0,.65)}
   canvas{display:block;width:100%;height:200px}
-  .depthrow{display:flex;align-items:center;height:38px;border-bottom:1px solid var(--line)}
+  .depthrow{display:flex;align-items:center;height:34px;border-bottom:1px solid var(--line)}
   /* 좌우 잔량 셀은 같은 폭이어야 막대 길이를 비교할 수 있다. 고정폭은 375px 폰에서 넘치므로 flex 로 나눈다. */
-  .qcell{flex:1 1 0;min-width:0;height:38px;position:relative;display:flex;align-items:center}
+  .qcell{flex:1 1 0;min-width:0;height:34px;position:relative;display:flex;align-items:center}
   .qcell.a{justify-content:flex-end;padding-right:12px;gap:7px}
   .qcell.b{gap:7px;padding-left:12px}
-  .qbar{position:absolute;top:5px;height:28px;border-radius:3px}
+  .qbar{position:absolute;top:4px;height:26px;border-radius:3px}
   /* 호가 가격 칸은 버튼이다 — 누르면 그 가격이 주문가(지정가)가 된다. 다시 누르면 시장가로 돌아간다. */
   .pcell:active{filter:brightness(1.35)}
-  .pcell{flex:0 0 104px;height:38px;display:flex;flex-direction:column;
+  .pcell{flex:0 0 104px;height:34px;display:flex;flex-direction:column;
          align-items:center;justify-content:center;background:var(--surf);
          border-left:1px solid var(--line);border-right:1px solid var(--line)}
 
   /* ── HTS 의 표·시세 요소 ──
      실제 증권 앱처럼 열 머리(thead), 잔량 합계, 가격 반짝임, 주문 확인 시트를 둔다. */
-  .sec{display:flex;align-items:center;gap:8px;padding:22px 16px 10px}
+  .sec{display:flex;align-items:center;gap:8px;padding:16px 16px 8px}
   .sec h2{margin:0;font-size:14px;font-weight:700;flex:1;min-width:0}
   .sec h2 small{font-size:11px;font-weight:500;color:var(--dim2);margin-left:4px}
   .sec .meta{font-size:11px;color:var(--dim2)}
-  .thead{display:flex;align-items:center;gap:10px;height:30px;padding:0 16px;
+  .thead{display:flex;align-items:center;gap:10px;height:28px;padding:0 16px;
          border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surf);
          font-size:10px;font-weight:600;color:var(--dim2);letter-spacing:.02em}
   button.row{transition:background .12s}
@@ -139,7 +141,7 @@
   @keyframes fldn{from{background:rgba(76,141,255,.32)}to{background:transparent}}
   .kv{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
       border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .kv div{background:var(--surf);padding:9px 11px}
+  .kv div{background:var(--surf);padding:7px 10px}
   .kv .k{font-size:10px;color:var(--dim2)}
   .kv .v{font-size:12px;font-weight:600;margin-top:3px}
   .obtot{display:flex;align-items:center;height:36px;margin-top:-1px;border-top:1px solid var(--line2);
@@ -184,6 +186,12 @@
    프로토타입의 더미 엔진이 있던 자리다. docs/API.md 의 계약을 그대로 호출하고,
    화면 코드는 S.snap(공개 스냅샷) / S.me(내 정보) 두 개만 읽는다.
    ========================================================================= */
+/* iOS Safari 는 viewport 의 user-scalable=no 를 무시한다. 핀치 제스처와 두 손가락 이동을 직접 막는다.
+   한 손가락 스크롤과 탭은 건드리지 않는다. */
+for(const ev of ['gesturestart','gesturechange','gestureend'])
+  document.addEventListener(ev, e=>e.preventDefault(), {passive:false});
+document.addEventListener('touchmove', e=>{ if(e.touches.length>1||(e.scale!==undefined&&e.scale!==1)) e.preventDefault(); }, {passive:false});
+
 const LSK = 'stock-challenge:';
 function lsGet(k,d){ try{const v=localStorage.getItem(LSK+k); return v===null?d:JSON.parse(v);}catch(e){return d;} }
 function lsSet(k,v){ try{localStorage.setItem(LSK+k,JSON.stringify(v));}catch(e){} }
@@ -421,8 +429,6 @@ const esc= s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 function light(hex,a=.3){const v=parseInt(String(hex||'#888888').slice(1),16),f=x=>Math.round(x+(255-x)*a);
   return '#'+[f(v>>16&255),f(v>>8&255),f(v&255)].map(x=>x.toString(16).padStart(2,'0')).join('');}
 const dot = (c,s=9)=>`<span class="dot" style="width:${s}px;height:${s}px;background:${light(c)}"></span>`;
-const fairBadge = v => `<span class="badge m" style="background:${v>=5?'var(--warnT)':v<=-5?'var(--downT)':'var(--surf3)'};
-  color:${v>=5?'var(--warn)':v<=-5?'var(--down)':'var(--dim)'}">${v>=5?'거품 ':v<=-5?'저평가 ':''}${p1(v)}</span>`;
 const svg = (d,sz=20,c='var(--dim)',w=1.6)=>`<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none"
   stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
 const iBack=`${svg('M15 5l-7 7 7 7',22,'var(--text)',1.8)}`;
@@ -525,7 +531,7 @@ function onNews(nw){
         ${svg(iBolt,12,'var(--warn)',1.6)}돌발 뉴스</span>
       ${dot(s.color,8)}<span style="font-size:12px;color:var(--dim)">${esc(s.name)}</span>
       <span class="grow"></span>
-      <span class="m" style="font-size:12px;font-weight:700">${n(s.last)}</span>${fairBadge(s.vsFairPct)}</div>
+      <span class="m" style="font-size:12px;font-weight:700">${n(s.last)}</span></div>
     <button data-act="stock" data-v="${nw.code}" style="display:block;width:100%;text-align:left;
       font-size:15px;font-weight:700;line-height:1.4;margin-top:9px">${esc(nw.headline)}</button>
     ${canAct?`<div style="display:flex;gap:8px;margin-top:12px">
@@ -711,7 +717,7 @@ function vLobby(){
       <div class="m" style="font-size:40px;font-weight:700;letter-spacing:.18em;color:var(--acc)">${esc(S.roomCode||'')}</div>
       <div style="font-size:12px;color:var(--dim2);margin-top:8px">이 코드를 불러주면 같은 방으로 들어옵니다</div></div></div>
 
-  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+  <div class="pad" style="padding-top:16px;padding-bottom:8px">
     <div style="display:flex;align-items:center">
       <div class="grow" style="font-size:14px;font-weight:700">참가자
         <span style="color:var(--dim2);font-weight:500">${players.length}</span></div>
@@ -725,7 +731,7 @@ function vLobby(){
           ${mine?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div></div>`;}).join('')}</div>`
     : `<div class="pad"><div style="font-size:12px;color:var(--dim2);padding:4px 2px">아직 아무도 들어오지 않았습니다.</div></div>`}
 
-  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">이 방의 설정</div></div>
+  <div class="pad" style="padding-top:16px;padding-bottom:8px"><div style="font-size:14px;font-weight:700">이 방의 설정</div></div>
   <div style="border-top:1px solid var(--line)">
     <div class="row" style="min-height:48px;padding-top:11px;padding-bottom:11px;align-items:flex-start">
       <span style="font-size:13px;color:var(--dim);flex:0 0 72px;line-height:24px">거래 종목</span>
@@ -766,26 +772,26 @@ function vIpo(snap,me){
       <div class="grow" style="font-size:15px;font-weight:600">개장 공모</div>
       <span class="badge" style="background:var(--warnT);color:var(--warn);letter-spacing:.06em">단일가 배정</span></div>
     <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
-      <div class="m" style="font-size:40px;font-weight:700;color:var(--warn)">${snap.ipoRemainSec}</div>
+      <div class="m" style="font-size:34px;font-weight:700;color:var(--warn)">${snap.ipoRemainSec}</div>
       <div style="font-size:14px;color:var(--dim)">초 뒤 마감</div><div class="grow"></div>
       <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(me.cash)}</div></div>
-    <div class="bar" style="margin:12px 0 16px"><i style="width:${CFG.ipoSec?(1-snap.ipoRemainSec/CFG.ipoSec)*100:0}%"></i></div></div>
+    <div class="bar" style="margin:10px 0 12px"><i style="width:${CFG.ipoSec?(1-snap.ipoRemainSec/CFG.ipoSec)*100:0}%"></i></div></div>
   ${connBanner()}
   <div class="pad" style="padding-top:16px">
     <div style="display:flex;gap:10px;background:var(--warnT);border:1px solid rgba(245,165,36,.35);
-      border-radius:14px;padding:14px 16px">
+      border-radius:12px;padding:10px 12px">
       <div style="flex-shrink:0;margin-top:1px">${svg(iBolt,20,'var(--warn)',1.5)}</div>
       <div><div style="font-size:14px;font-weight:700;color:var(--warn)">청약하지 않으면 주식 0주로 시작합니다</div>
       <div style="font-size:12px;color:var(--dim);line-height:1.6;margin-top:5px">${CFG.openPremium>0
         ? `공모가는 기준가지만 시초가는 <b style="color:var(--text)">적정가(기준가 +${(CFG.openPremium*100).toFixed(0)}%)</b>에서 열립니다.
            청약한 사람만 그 차이를 얻고, 주식이 없으면 뉴스와 인플레로 오르는 값도 못 탑니다.`
         : `주식이 없으면 매분 들어오는 <b style="color:var(--text)">무상증자를 한 주도 받지 못하고</b>, 인플레로 오르는 값도 못 탑니다.`}</div></div></div></div>
-  <div style="display:flex;align-items:center;padding:22px 16px 10px">
+  <div style="display:flex;align-items:center;padding:14px 16px 8px">
     <div class="grow" style="font-size:14px;font-weight:700">종목별 청약 현황</div>
     <div class="m" style="font-size:11px;color:var(--dim2)">예치 ${n(reserved)}</div></div>
   <div style="border-top:1px solid var(--line)">${snap.stocks.map(st=>{
     const demand = st.ipoDemand||0, rate = st.float? demand/st.float : 0, mine = S.myIpoBids[st.code]||0;
-    return `<button data-act="ipoPick" data-v="${st.code}" class="row" style="height:64px;width:100%;text-align:left;
+    return `<button data-act="ipoPick" data-v="${st.code}" class="row" style="height:56px;width:100%;text-align:left;
       background:${st.code===U.ipoCode?'var(--accT)':'transparent'};border-left:${st.code===U.ipoCode?'2px solid var(--acc)':'2px solid transparent'}">
       ${dot(st.color)}
       <div class="grow"><div style="display:flex;align-items:center;gap:6px">
@@ -796,21 +802,18 @@ function vIpo(snap,me){
         <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${rate>=1?'var(--up)':'var(--dim2)'}">청약률 ${rate.toFixed(1)}배</div></div>
     </button>`;}).join('')}</div>
   <div class="sticky">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      ${dot(s.color)}<div class="grow" style="font-size:15px;font-weight:700">${esc(s.name)} 청약</div>
-      <div class="m" style="font-size:11px;color:var(--dim2)">호가 ${tickSize(U.ipoPrice)}원 · ${CFG.lotSize}주 단위</div></div>
-    <div style="font-size:11px;color:var(--dim2);margin:-4px 0 8px">공모가는 기준가 ${n(s.open||s.last)}원 아래로 내려가지 않습니다. 그 밑으로 써낸 청약은 배정되지 않고 환급됩니다.</div>
-    <div class="step"><span style="font-size:11px;color:var(--dim2);width:44px">가격</span>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      ${dot(s.color)}<div class="grow" style="font-size:14px;font-weight:700">${esc(s.name)} 청약</div>
+      <div class="m" style="font-size:11px;color:var(--dim2)">기준가 ${n(s.open||s.last)} 미만은 배정 안 됨</div></div>
+    <div class="step"><span style="font-size:11px;color:var(--dim2);width:32px">가격</span>
       <span class="v m">${n(U.ipoPrice)}</span>
       <button data-act="ipoP" data-v="-1" aria-label="가격 내림">${iMinus}</button>
       <button data-act="ipoP" data-v="1" aria-label="가격 올림">${iPlus}</button></div>
-    <div class="step" style="margin-top:8px"><span style="font-size:11px;color:var(--dim2);width:44px">수량</span>
+    <div class="step" style="margin-top:6px"><span style="font-size:11px;color:var(--dim2);width:32px">수량</span>
       <span class="v m">${n(U.ipoQty)}</span>
       <button data-act="ipoQ" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
       <button data-act="ipoQ" data-v="1" aria-label="수량 늘림">${iPlus}</button></div>
-    <div style="display:flex;margin:14px 2px 12px"><div class="grow" style="font-size:12px;color:var(--dim2)">예치 증거금</div>
-      <div class="m" style="font-size:14px;font-weight:700">${n(U.ipoPrice*U.ipoQty)}원</div></div>
-    <button class="cta" data-act="ipoBid">청약하기</button></div>`;
+    <button class="cta" data-act="ipoBid" style="margin-top:8px">청약하기 · 예치 ${n(U.ipoPrice*U.ipoQty)}원</button></div>`;
 }
 </script>
 
@@ -818,7 +821,7 @@ function vIpo(snap,me){
 /* ---- 3. 전체 시황 ---- */
 function vMarket(snap,me){
   const hasMe = !!S.me;
-  const sorted=[...snap.stocks].sort((a,b)=> U.sort==='chg'? b.changePct-a.changePct : b.vsFairPct-a.vsFairPct);
+  const sorted=[...snap.stocks].sort((a,b)=> b.changePct-a.changePct);
   // 순위표는 상위 20명까지만 실려 온다(대역폭). 내가 거기 없으면 내 줄을 따로 붙인다.
   const inTop = hasMe && snap.ranking.some(p=>p.id===me.id);
   return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
@@ -857,13 +860,13 @@ function vMarket(snap,me){
       <div style="display:flex;flex-wrap:wrap">
         ${[['현금',n(me.cash),'var(--text)'],['묶인 현금',n(me.lockedCash),'var(--dim)'],
            ['평가금액',n(me.nav-me.cash-me.lockedCash),'var(--text)'],['실현손익',sg(me.realized),cl(me.realized)]]
-          .map(([k,v,c])=>`<div style="width:50%;padding:11px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
+          .map(([k,v,c])=>`<div style="width:50%;padding:8px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
             <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
       <div style="height:1px;background:var(--line)"></div>
-      <div style="display:flex;align-items:center;padding:12px 0 10px">
+      <div style="display:flex;align-items:center;padding:10px 0 8px">
         <div class="grow lbl" style="margin:0">분당 정산 · ${salaryCount()}회</div>
         <span class="badge m" style="background:var(--surf3);color:var(--dim)">다음 ${clk(nextSalarySec())}</span></div>
-      <div style="display:flex;gap:8px;padding-bottom:14px">
+      <div style="display:flex;gap:8px;padding-bottom:12px">
         <div style="flex:1;background:var(--accT);border-radius:10px;padding:10px 12px">
           <div style="font-size:11px;color:var(--dim2)">월급 · ${n(CFG.salaryAmount)}/분</div>
           <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">+${n(me.salaryTotal)}</div></div>
@@ -872,19 +875,12 @@ function vMarket(snap,me){
           <div class="m" style="font-size:14px;font-weight:700;color:var(--acc);margin-top:3px">${n(me.holdings.reduce((a,h)=>a+h.qty,0))}주</div></div></div>
     </div></div>`:''}
 
-  <div class="pad" style="padding-top:22px;padding-bottom:10px">
-    <div style="display:flex;align-items:center;gap:8px">
-      <div class="grow" style="font-size:14px;font-weight:700">전체 종목 <span style="color:var(--dim2);font-weight:500">${snap.stocks.length}</span></div>
-      ${[['chg','등락률순'],['fair','괴리율순']].map(([k,t])=>`<button data-act="set" data-k="sort" data-v="${k}"
-        aria-pressed="${U.sort===k}" style="height:32px;padding:0 10px;border-radius:8px;font-size:11px;font-weight:600;
-        background:${U.sort===k?'var(--surf3)':'transparent'};border:1px solid ${U.sort===k?'var(--line2)':'var(--line)'};
-        color:${U.sort===k?'var(--text)':'var(--dim2)'}">${t}</button>`).join('')}</div>
-    <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-      <span>인플레로 적정가가 분당 ${(CFG.inflationPerMin*100).toFixed(1)}%씩 오릅니다. 등락률은 얼마나 올랐나, 괴리율은 <b style="color:var(--dim)">적정가보다 비싼가</b>를 말합니다.</span></div></div>
-  <div class="thead"><span class="grow">종목</span><span style="width:66px;text-align:right">괴리율</span>
-    <span style="width:84px;text-align:right">현재가 · 등락</span></div>
+  <div class="pad" style="padding-top:16px;padding-bottom:8px">
+    <div style="font-size:14px;font-weight:700">전체 종목 <span style="color:var(--dim2);font-weight:500">${snap.stocks.length}</span>
+      <span style="font-size:11px;font-weight:500;color:var(--dim2);margin-left:6px">등락률순</span></div></div>
+  <div class="thead"><span class="grow">종목</span><span style="width:84px;text-align:right">현재가 · 등락</span></div>
   <div>${sorted.map(s=>`
-    <button data-act="stock" data-v="${s.code}" class="row" style="height:64px;width:100%;text-align:left">
+    <button data-act="stock" data-v="${s.code}" class="row" style="height:56px;width:100%;text-align:left">
       ${dot(s.color)}
       <div class="grow"><div style="display:flex;align-items:center;gap:6px;min-width:0">
           <span style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</span>
@@ -892,13 +888,12 @@ function vMarket(snap,me){
           ${s.issued===0?'<span class="badge" style="background:var(--surf3);color:var(--dim2)">미발행</span>':''}
           ${snap.news.some(nw=>nw.code===s.code)?`<span class="badge" style="background:var(--warnT);color:var(--warn)">뉴스</span>`:''}</div>
         <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">적정 ${n(s.fair)} · 거래량 ${n(s.volume)}</div></div>
-      <div style="width:66px;display:flex;justify-content:flex-end;flex-shrink:0">${fairBadge(s.vsFairPct)}</div>
       <div class="rt" style="width:84px;flex-shrink:0">
         <div class="m" data-flash style="display:inline-block;font-size:16px;font-weight:700;color:${clz(s.changePct)};border-radius:4px;padding:0 3px;margin-right:-3px">${tri(s.changePct)}${n(s.last)}</div>
         <div class="m" style="font-size:12px;font-weight:600;margin-top:2px;color:${clz(s.changePct)}">${pc(s.changePct)}</div></div>
     </button>`).join('')}</div>
 
-  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+  <div class="pad" style="padding-top:16px;padding-bottom:8px">
     <div style="font-size:14px;font-weight:700">사람 순위 <span style="color:var(--dim2);font-weight:500;font-size:11px">봇 제외 · 누적 투입 대비 · 상위 ${snap.ranking.length}명</span></div></div>
   <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>rankRow(p, hasMe&&p.id===me.id)).join('')}
     ${(hasMe&&!inTop&&me.rank)?rankRow({rank:me.rank,name:me.name,nav:me.nav,
@@ -940,8 +935,6 @@ function vStock(snap,me){
   // 비율 칩과 '최대' 는 고른 쪽만 본다 — 매수 한도로 매도를 시도하던 혼선을 없앤다.
   const cap=buying?maxBuy:maxSell;
   if(U.qty>cap) U.qty=cap;               // 방향을 바꾸면 수량도 그쪽 한도로 맞춘다
-  const fee=Math.floor(px*U.qty*CFG.feeRate);
-  const amt=buying? px*U.qty+fee : px*U.qty-fee;
   // 내 미체결 주문을 호가 옆에 표시한다. 매도는 왼쪽(매도 잔량 쪽), 매수는 오른쪽에.
   const mineBuy={}, mineSell={};
   for(const o of myOrders){ const m=o.side==='buy'?mineBuy:mineSell; m[o.price]=(m[o.price]||0)+o.qty; }
@@ -1005,9 +998,7 @@ function vStock(snap,me){
         <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed var(--warn)"></span>
           <span style="font-size:11px;color:var(--dim)">적정가</span></span>
         <span class="grow"></span><span class="m" style="font-size:10px;color:var(--dim2)">1초 1점</span></div>
-      <canvas id="chart"></canvas>
-      <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-        <span>두 선의 간격이 거품의 크기입니다. 지금은 적정가보다 ${p1(s.vsFairPct)}.</span></div></div>`
+      <canvas id="chart"></canvas></div>`
   : `<div class="sec" style="padding:14px 16px 8px"><h2 style="font-size:12px;color:var(--dim)">최근 체결 <small>${fills.length}건</small></h2>
       <span class="meta">체결강도 <b class="m" style="color:${strength>=100?'var(--up)':'var(--down)'}">${strengthTxt}</b></span></div>
     <div class="thead"><span style="width:52px">시간</span><span class="grow">체결가 · 시초가 대비</span>
@@ -1031,7 +1022,7 @@ function vStock(snap,me){
       ${svg(iBolt,15,'var(--warn)',1.6)}
       <span class="grow" style="font-size:12px;font-weight:600;line-height:1.4">${esc(nw.headline)}</span>
       <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${Math.max(0,nw.lifeSec-nw.ageSec)}초</span></div></div>`).join('')}
-  <div style="padding:16px 16px 14px">
+  <div style="padding:12px 16px 10px">
     <div style="display:flex;align-items:flex-start;gap:12px">
       <div class="grow">
         <div style="display:flex;align-items:baseline;gap:6px">
@@ -1042,9 +1033,9 @@ function vStock(snap,me){
           <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${tri(s.changePct)}${n(Math.abs(s.last-s.open))}</span>
           <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${pc(s.changePct)}</span>
           <span class="m" style="font-size:11px;color:var(--dim2)">시초가 대비</span></div></div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;padding-top:4px">${fairBadge(s.vsFairPct)}
+      <div style="display:flex;flex-direction:column;align-items:flex-end;padding-top:6px">
         <span class="m" style="font-size:11px;color:var(--dim2)">적정가 ${n(s.fair)}</span></div></div>
-    <div class="kv" style="margin-top:14px">
+    <div class="kv" style="margin-top:10px">
       ${[['시가',n(s.open),'var(--text)'],['고가',n(s.high),'var(--up)'],['저가',n(s.low),'var(--down)'],
          ['거래량',n(s.volume),'var(--text)'],['발행주식',n(s.issued)+'주','var(--text)'],['호가단위',n(tick)+'원','var(--text)']]
         .map(([k,v,c])=>`<div><div class="k">${k}</div><div class="v m" style="color:${c}">${v}</div></div>`).join('')}</div></div>
@@ -1068,41 +1059,30 @@ function vStock(snap,me){
       <div class="m" style="font-size:14px;font-weight:700;margin-top:3px;color:${cl(hold.pnl)}">${sg(hold.pnl)} (${pc(hold.pnlPct)})</div></div></div></div>`:''}
   <div style="height:12px"></div>
   ${(hasMe&&trading)?`<div class="sticky">
-    <div class="seg" style="margin-bottom:12px">
+    <div class="seg" style="margin-bottom:8px">
       <button data-act="set" data-k="side" data-v="buy" aria-pressed="${buying}" style="${buying?'background:var(--up);color:#fff':''}">매수</button>
       <button data-act="set" data-k="side" data-v="sell" aria-pressed="${!buying}" style="${!buying?'background:var(--down);color:#fff':''}">매도</button></div>
-    <div class="step" style="margin-bottom:8px"><span style="font-size:11px;color:var(--dim2);width:32px">가격</span>
-      <span class="v m" style="display:flex;align-items:baseline;justify-content:flex-end;gap:7px">
+    <div class="step" style="margin-bottom:6px"><span style="font-size:11px;color:var(--dim2);width:32px">가격</span>
+      <span class="v m" style="display:flex;align-items:center;justify-content:flex-end;gap:6px">
         ${market
-          ? `<span class="badge" style="background:var(--surf3);color:var(--dim)">시장가</span><span style="font-size:13px;color:var(--dim)">현재가 ${n(s.last)}</span>`
-          : `<span class="badge" style="background:var(--accT);color:var(--acc)">지정가</span>${n(px)}`}</span>
+          ? `<span class="badge" style="background:var(--surf3);color:var(--dim)">시장가</span><span style="font-size:13px;color:var(--dim)">${n(s.last)}</span>`
+          : `<span class="badge" style="background:var(--accT);color:var(--acc)">지정가</span>${n(px)}
+             <button data-act="pxClear" aria-label="시장가로 되돌림" style="width:auto;height:22px;padding:0 7px;border-radius:6px;
+               background:transparent;border:1px solid var(--line);color:var(--dim);font-size:10px;font-weight:600">시장가로</button>`}</span>
       <button data-act="pxStep" data-v="-1" aria-label="가격 한 호가 내림">${iMinus}</button>
       <button data-act="pxStep" data-v="1" aria-label="가격 한 호가 올림">${iPlus}</button></div>
     <div class="step"><span style="font-size:11px;color:var(--dim2);width:32px">수량</span>
       <span class="v m">${n(U.qty)}</span>
       <button data-act="q" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
       <button data-act="q" data-v="1" aria-label="수량 늘림" ${U.qty>=cap?'disabled':''}>${iPlus}</button></div>
-    <div class="chips" style="margin-top:8px">
+    <div class="chips" style="margin-top:6px">
       ${[10,25,50].map(r=>`<button data-act="ratio" data-v="${r}" class="m" ${cap<CFG.lotSize?'disabled':''}>${r}%</button>`).join('')}
       <button data-act="ratio" data-v="100" class="m" style="flex:1.5" ${cap<CFG.lotSize?'disabled':''}>최대 ${n(cap)}</button></div>
-    <div style="display:flex;margin:14px 2px 8px"><span class="grow" style="font-size:12px;color:var(--dim2)">
-      ${buying?'예상 지출':'예상 수령'} <span style="font-size:10px">(수수료 포함)</span></span>
-      <span class="m" style="font-size:14px;font-weight:700">${n(amt)}원</span></div>
-    <div style="display:flex;margin:0 2px 14px"><span class="grow" style="font-size:12px;color:var(--dim2)">
-      ${buying?'살 수 있는 수량':'팔 수 있는 수량'}</span>
-      <span class="m" style="font-size:12px;color:var(--dim)">${n(cap)}주</span></div>
-    <button data-act="order" ${U.qty<CFG.lotSize?'disabled':''} style="width:100%;height:54px;border-radius:13px;
-      font-size:16px;font-weight:700;${U.qty<CFG.lotSize
+    <button data-act="order" ${U.qty<CFG.lotSize?'disabled':''} style="width:100%;height:46px;border-radius:12px;margin-top:8px;
+      font-size:15px;font-weight:700;${U.qty<CFG.lotSize
         ? 'background:var(--surf3);color:var(--dim2)'
         : buying? 'background:var(--up);color:#fff' : 'background:var(--downT);border:1px solid var(--down);color:var(--down)'}">
-      ${U.qty<CFG.lotSize ? (buying?'현금이 부족합니다':'팔 주식이 없습니다') : `${market?'':n(px)+'원 · '}${n(U.qty)}주 ${buying?'매수':'매도'}`}</button>
-    <div style="display:flex;align-items:center;justify-content:center;gap:6px;font-size:10px;color:var(--dim2);margin-top:8px">
-      ${market
-        ? `<span>현재가로 즉시 체결됩니다 · 호가를 누르면 지정가</span>`
-        : `<span>체결되지 않으면 미체결 주문으로 남습니다</span><span>·</span>
-           <button data-act="pxClear" style="font-size:10px;font-weight:600;height:24px;padding:0 7px;border-radius:6px;border:1px solid var(--line);color:var(--dim)">시장가로</button>`}<span>·</span>
-      <button data-act="togConfirm" style="font-size:10px;font-weight:600;height:24px;padding:0 7px;border-radius:6px;
-        border:1px solid ${U.confirmOn?'var(--acc)':'var(--line)'};color:${U.confirmOn?'var(--acc)':'var(--dim)'}">주문 확인 ${U.confirmOn?'켬':'끔'}</button></div></div>`:''}`;
+      ${U.qty<CFG.lotSize ? (buying?'현금이 부족합니다':'팔 주식이 없습니다') : `${market?'':n(px)+'원 · '}${n(U.qty)}주 ${buying?'매수':'매도'}`}</button></div>`:''}`;
 }
 
 /* 차트는 GET /api/rooms/{code}/chart 의 history 를 그린다 (1초에 한 점, 최대 1800점). */
@@ -1111,7 +1091,10 @@ function drawChart(){
   const s=stockOf(U.code); if(!s) return;
   const hs=(S.chart.code===U.code? S.chart.rows : []) || [];
   const dpr=window.devicePixelRatio||1, w=c.clientWidth, h=200;
-  c.width=w*dpr; c.height=h*dpr; const g=c.getContext('2d'); g.scale(dpr,dpr);
+  // width 를 쓰는 순간 비트맵이 비워진다. 크기가 그대로면 다시 쓰지 않고, 변환은 누적되지 않게 setTransform 으로 건다.
+  const W=Math.round(w*dpr), H=Math.round(h*dpr);
+  if(c.width!==W||c.height!==H){ c.width=W; c.height=H; }
+  const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0);
   g.clearRect(0,0,w,h);
   if(hs.length<2){
     g.fillStyle='#5C6472'; g.font='500 12px "IBM Plex Sans KR",sans-serif'; g.textAlign='center';
@@ -1165,7 +1148,7 @@ function vResult(snap){
       <div style="display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:8px">
         <span class="m" style="font-size:20px;font-weight:700">${n(win.nav)}원</span>
         <span class="m" style="font-size:15px;font-weight:700;color:${cl(win.pnlPct)}">${pc(win.pnlPct)}</span></div></div></div>`:''}
-  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">사람 순위
+  <div class="pad" style="padding-top:16px;padding-bottom:8px"><div style="font-size:14px;font-weight:700">사람 순위
     <span style="color:var(--dim2);font-weight:500;font-size:11px">${rk.length}명</span></div></div>
   <div style="border-top:1px solid var(--line)">${rk.map(p=>{const m2=p.id===myId;
     return `<div class="row" style="height:60px;background:${m2?'var(--accT)':'transparent'};
@@ -1176,7 +1159,7 @@ function vResult(snap){
         ${m2?'<span class="badge" style="background:var(--acc);color:var(--ink)">나</span>':''}</div>
       <div class="rt"><div class="m" style="font-size:15px;font-weight:600">${n(p.nav)}</div>
         <div class="m" style="font-size:11px;font-weight:600;margin-top:2px;color:${p.pnlPct===0?'var(--dim2)':cl(p.pnlPct)}">${sg(p.pnl)} · ${pc(p.pnlPct)}</div></div></div>`;}).join('')}</div>
-  <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">종목 결과</div></div>
+  <div class="pad" style="padding-top:16px;padding-bottom:8px"><div style="font-size:14px;font-weight:700">종목 결과</div></div>
   <div style="border-top:1px solid var(--line)">${[...stks].sort((a,b)=>b.changePct-a.changePct).map(s=>`
     <div class="row" style="height:64px">${dot(s.color||(stockOf(s.code)||{}).color)}
       <div class="grow"><div style="font-size:14px;font-weight:600">${esc(s.name)}</div>
@@ -1186,7 +1169,7 @@ function vResult(snap){
       <div class="rt" style="width:72px"><div class="m" style="font-size:10px;color:var(--dim2)">거래 ${n(s.volume)}</div>
         <div class="m" style="font-size:10px;color:var(--dim2);margin-top:4px">발행 ${n(s.issued)}</div></div></div>`).join('')}</div>
   ${(S.result&&S.result.newsLog&&S.result.newsLog.length)?`
-    <div class="pad" style="padding-top:22px;padding-bottom:10px"><div style="font-size:14px;font-weight:700">이 판에 터진 뉴스
+    <div class="pad" style="padding-top:16px;padding-bottom:8px"><div style="font-size:14px;font-weight:700">이 판에 터진 뉴스
       <span style="color:var(--dim2);font-weight:500">${S.result.newsLog.length}</span></div></div>
     <div style="border-top:1px solid var(--line)">${S.result.newsLog.map(nw=>`
       <div class="row" style="height:52px"><span class="m" style="width:52px;font-size:11px;color:var(--dim2)">+${clk(nw.atSec)}</span>
@@ -1239,11 +1222,11 @@ function vPortfolio(snap,me){
            ['평가금액',n(evalTotal),'var(--text)'],['실현손익',sg(me.realized),cl(me.realized)],
            ['받은 월급',sg(me.salaryTotal),'var(--acc)'],
            ['보유 주식',n(totalQty)+'주',totalQty?'var(--acc)':'var(--dim2)']]
-          .map(([k,v,c])=>`<div style="width:50%;padding:11px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
+          .map(([k,v,c])=>`<div style="width:50%;padding:8px 0"><div style="font-size:11px;color:var(--dim2)">${k}</div>
             <div class="m" style="font-size:13px;font-weight:600;color:${c};margin-top:3px">${v}</div></div>`).join('')}</div>
       <div style="height:14px"></div></div></div>
 
-  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+  <div class="pad" style="padding-top:16px;padding-bottom:8px">
     <div style="display:flex;align-items:center">
       <div class="grow" style="font-size:14px;font-weight:700">보유 종목
         <span style="color:var(--dim2);font-weight:500">${holds.length}</span></div>
@@ -1266,7 +1249,7 @@ function vPortfolio(snap,me){
         ${CFG.maxBonusRate>0? '주식이 없으면 매분 들어오는 무상증자를 한 주도 받지 못합니다.' : '주식이 없으면 뉴스와 인플레로 오르는 값을 못 탑니다.'}<br>시황에서 종목을 골라 매수해 보세요.</div>
       <button data-act="go" data-v="market" class="cta" style="height:48px;margin-top:16px">시황으로</button></div></div>`}
 
-  <div class="pad" style="padding-top:22px;padding-bottom:10px">
+  <div class="pad" style="padding-top:16px;padding-bottom:8px">
     <div style="display:flex;align-items:center">
       <div class="grow" style="font-size:14px;font-weight:700">미체결 주문
         <span style="color:var(--dim2);font-weight:500">${me.openOrders.length}</span></div>
@@ -1328,9 +1311,11 @@ function patchAttrs(live,next){
 }
 function patchEl(live,next){
   if(live.nodeName!==next.nodeName){ live.replaceWith(next); return; }
-  patchAttrs(live,next);
-  // 캔버스는 자바스크립트로 직접 그린다. 자식을 건드리면 그림이 날아간다.
+  // 캔버스는 자바스크립트로 직접 그린다. drawChart 가 붙인 width/height 속성이 템플릿에는 없어서
+  // 여기서 지워 버리면 비트맵이 초기화돼 다음 그리기까지 빈 화면이 된다 — 차트가 깜빡이던 원인이다.
+  // 속성도 자식도 건드리지 않는다.
   if(live.nodeName==='CANVAS') return;
+  patchAttrs(live,next);
   // 입력 중인 칸은 값도 캐럿도 건드리지 않는다.
   if(live===document.activeElement&&(live.nodeName==='INPUT'||live.nodeName==='TEXTAREA')) return;
   patchKids(live,next);
@@ -1364,7 +1349,7 @@ function viewHtml(){
   return vMarket(snap,me);
 }
 
-let lastHtml=null, lastView=null, rafPending=0, chartKey=null;
+let lastHtml=null, lastView=null, rafPending=0, chartKey=null, chartEl=null;
 
 function paint(){
   rafPending=0;
@@ -1382,10 +1367,11 @@ function paint(){
   renderSheet();
   if(U.view==='stock'&&U.tab==='차트'){
     // 캔버스는 살아남으므로 그림이 실제로 달라질 때만 다시 그린다.
-    const s=stockOf(U.code);
+    const s=stockOf(U.code), c=document.getElementById('chart');
     const key=`${U.code}|${S.chart.rows.length}|${s?s.last:0}|${view.clientWidth}`;
-    if(key!==chartKey){ chartKey=key; drawChart(); }
-  }else chartKey=null;
+    // 캔버스 요소가 새로 생겼으면(탭 전환·DOM 교체) 값이 같아도 다시 그린다 — 빈 캔버스가 한 프레임만 보여도 깜빡임이다.
+    if(key!==chartKey||c!==chartEl){ chartKey=key; chartEl=c; drawChart(); }
+  }else{ chartKey=null; chartEl=null; }
 }
 
 /* 한 프레임에 푸시가 여러 번 와도 그리는 건 한 번이면 된다. */
