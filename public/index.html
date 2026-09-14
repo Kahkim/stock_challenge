@@ -49,7 +49,7 @@
 
   .lbl{font-size:12px;font-weight:600;color:var(--dim2);letter-spacing:.04em;margin-bottom:9px}
   .seg{display:flex;gap:4px;padding:4px;background:var(--surf);border:1px solid var(--line);border-radius:12px}
-  .seg button{flex:1;height:40px;display:flex;align-items:center;justify-content:center;border-radius:9px;
+  .seg button{flex:1;height:36px;display:flex;align-items:center;justify-content:center;border-radius:9px;
               color:var(--dim);font-size:14px;font-weight:500}
   .seg button[aria-pressed="true"]{background:var(--acc);color:var(--ink);font-weight:700}
   .card{background:var(--surf);border:1px solid var(--line);border-radius:14px}
@@ -71,6 +71,11 @@
   .step .v{flex:1;text-align:right;font-size:17px;font-weight:700}
   .step button{width:34px;height:34px;display:flex;align-items:center;justify-content:center;
                border-radius:8px;background:var(--surf3)}
+  /* 가격·수량을 한 줄에 — 360px 폰에서도 두 칸이 들어가야 한다 */
+  .step.sm{flex:1;min-width:0;gap:6px;padding:0 4px 0 10px}
+  .step.sm .k{font-size:10px;color:var(--dim2);width:20px;flex-shrink:0}
+  .step.sm .v{font-size:14px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .step.sm button{width:30px;height:30px}
   .chips{display:flex;gap:6px}
   .chips button{flex:1;height:30px;white-space:nowrap;display:flex;align-items:center;justify-content:center;border-radius:8px;
                 border:1px solid var(--line);color:var(--dim);font-size:11px;font-weight:600}
@@ -110,15 +115,15 @@
   .modal{width:100%;max-width:398px;background:var(--surf);border:1px solid var(--line2);border-radius:20px;padding:20px;
          box-shadow:0 28px 70px rgba(0,0,0,.65)}
   canvas{display:block;width:100%;height:200px}
-  .depthrow{display:flex;align-items:center;height:34px;border-bottom:1px solid var(--line)}
+  .depthrow{display:flex;align-items:center;height:30px;border-bottom:1px solid var(--line)}
   /* 좌우 잔량 셀은 같은 폭이어야 막대 길이를 비교할 수 있다. 고정폭은 375px 폰에서 넘치므로 flex 로 나눈다. */
-  .qcell{flex:1 1 0;min-width:0;height:34px;position:relative;display:flex;align-items:center}
+  .qcell{flex:1 1 0;min-width:0;height:30px;position:relative;display:flex;align-items:center}
   .qcell.a{justify-content:flex-end;padding-right:12px;gap:7px}
   .qcell.b{gap:7px;padding-left:12px}
-  .qbar{position:absolute;top:4px;height:26px;border-radius:3px}
+  .qbar{position:absolute;top:3px;height:24px;border-radius:3px}
   /* 호가 가격 칸은 버튼이다 — 누르면 그 가격이 주문가(지정가)가 된다. 다시 누르면 시장가로 돌아간다. */
   .pcell:active{filter:brightness(1.35)}
-  .pcell{flex:0 0 104px;height:34px;display:flex;flex-direction:column;
+  .pcell{flex:0 0 104px;height:30px;display:flex;flex-direction:column;
          align-items:center;justify-content:center;background:var(--surf);
          border-left:1px solid var(--line);border-right:1px solid var(--line)}
 
@@ -141,7 +146,7 @@
   @keyframes fldn{from{background:rgba(76,141,255,.32)}to{background:transparent}}
   .kv{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
       border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .kv div{background:var(--surf);padding:7px 10px}
+  .kv div{background:var(--surf);padding:6px 8px}
   .kv .k{font-size:10px;color:var(--dim2)}
   .kv .v{font-size:12px;font-weight:600;margin-top:3px}
   .obtot{display:flex;align-items:center;height:36px;margin-top:-1px;border-top:1px solid var(--line2);
@@ -414,7 +419,7 @@ const U = { view:'home', codes:[], dur:15, ipoSec:45, seed:1000000, bots:30,
             name:'', joinCode:'', title:'',
             code:null, tab:'호가', qty:0, side:'buy',
             ipoCode:null, ipoPrice:0, ipoQty:0, sort:'chg', busy:false,
-            sheet:null, px:null, confirmOn:lsGet('confirm',true), skipNext:false };   // px: 호가에서 고른 지정가. null 이면 시장가
+            sheet:null, px:null, pxPinned:false, confirmOn:lsGet('confirm',true), skipNext:false };   // px: 호가에서 고른 지정가. null 이면 시장가
 
 const n  = v => Math.round(v).toLocaleString('en-US');
 const pc = v => (v>=0?'+':'−')+Math.abs(v).toFixed(2)+'%';
@@ -483,12 +488,17 @@ toastEl.addEventListener('click',e=>{
    수수료는 서버가 체결금액에 feeRate 를 곱해 내림한 값이라(_settleTrades) 같은 식으로 계산한다. */
 function pushFill(f){
   const fee = Math.floor(f.amount*CFG.feeRate);
+  // 지정가보다 유리한 호가가 있으면 그 가격에 체결된다(매도는 더 비싸게, 매수는 더 싸게). 차이를 적어 준다 —
+  // 1,140 에 낸 매도가 1,170 에 체결됐을 때 "잘못 팔렸다" 로 읽히지 않게.
+  const w = S.lastPx && S.lastPx[f.code+'|'+f.side];
+  const better = (w && Date.now()-w.t<60000 && w.px!==f.price)
+    ? `<div class="m" style="font-size:11px;color:var(--acc);margin-top:2px">지정가 ${n(w.px)} → ${n(f.price)} 체결 · ${n(Math.abs(f.price-w.px))}원 유리</div>` : '';
   showToast(`<div style="display:flex;align-items:center;gap:10px">
     <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
       justify-content:center;background:${f.side==='buy'?'var(--upT)':'var(--downT)'}">
       ${svg('M4 12.5l5 5L20 6.5',17,f.side==='buy'?'var(--up)':'var(--down)',2)}</div>
     <div class="grow"><div style="font-size:13px;font-weight:700">${f.side==='buy'?'매수':'매도'} 체결 · ${esc(f.name)}${f.tag?' ('+esc(f.tag)+')':''}</div>
-      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${n(f.price)} × ${n(f.qty)}주 · 수수료 ${n(fee)}</div></div>
+      <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${n(f.price)} × ${n(f.qty)}주 · 수수료 ${n(fee)}</div>${better}</div>
     <div class="m" style="font-size:15px;font-weight:700;color:${f.side==='buy'?'var(--up)':'var(--down)'}">
       ${f.side==='buy'?'−':'+'}${n(f.amount)}</div></div>`);
 }
@@ -604,17 +614,14 @@ function orderSheet(o){
       ${dot(s.color,8)}<span style="font-size:15px;font-weight:700">${esc(s.name)}</span>
       <span class="m" style="font-size:11px;color:var(--dim2)">${esc(o.code)}</span></div>
     <div style="margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden">
-      ${[['주문 구분', o.market?'시장가 · 즉시 체결':'지정가 · 호가에 걸어둠'],['수량',n(o.qty)+'주'],
-         [o.market?'기준가':'주문 가격', n(o.px)+'원'+(o.market?' (현재가)':'')],
+      ${[['주문 가격', n(o.px)+'원 (지정가)'],['수량',n(o.qty)+'주'],
          ['수수료',n(fee)+'원 ('+(CFG.feeRate*100).toFixed(2)+'%)']].map(([k,v])=>
         `<div class="kvrow"><span class="k">${k}</span><span class="m" style="font-size:13px;font-weight:600">${v}</span></div>`).join('')}
       <div style="display:flex;align-items:center;height:52px;padding:0 14px;background:var(--surf2)">
         <span class="grow" style="font-size:13px;font-weight:600">${buying?'예상 지출':'예상 수령'}</span>
         <span class="m" style="font-size:18px;font-weight:700;color:${buying?'var(--up)':'var(--down)'}">${n(amt)}원</span></div></div>
     <div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-      <span>${o.market
-        ? '현재가 기준 예상 금액입니다. 호가 잔량에 따라 체결가는 달라질 수 있고, 잔량이 모자라면 남은 수량은 취소됩니다.'
-        : '이 가격보다 유리한 호가가 있으면 그 가격에 바로 체결되고, 없으면 호가창에 남아 기다립니다. 미체결 주문은 언제든 취소할 수 있습니다.'}</span></div>
+      <span>이 가격보다 유리한 호가가 있으면 그 가격에 바로 체결되고(매도는 더 비싸게, 매수는 더 싸게), 없으면 호가창에 남아 기다립니다. 미체결 주문은 언제든 취소할 수 있습니다.</span></div>
     <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--dim);cursor:pointer;height:32px">
       <input type="checkbox" data-act="skipConfirm" style="width:16px;height:16px;margin:0;accent-color:var(--acc)">다음부터 확인 없이 바로 주문</label>
     <div style="display:flex;gap:10px;margin-top:12px">
@@ -774,7 +781,7 @@ function vIpo(snap,me){
     <div style="display:flex;align-items:baseline;gap:8px;margin-top:8px">
       <div class="m" style="font-size:34px;font-weight:700;color:var(--warn)">${snap.ipoRemainSec}</div>
       <div style="font-size:14px;color:var(--dim)">초 뒤 마감</div><div class="grow"></div>
-      <div class="m" style="font-size:12px;color:var(--dim2)">잔여 현금 ${n(me.cash)}</div></div>
+      <div class="m" style="font-size:16px;font-weight:700;color:var(--text)">잔여 현금 ${n(me.cash)}</div></div>
     <div class="bar" style="margin:10px 0 12px"><i style="width:${CFG.ipoSec?(1-snap.ipoRemainSec/CFG.ipoSec)*100:0}%"></i></div></div>
   ${connBanner()}
   <div class="pad" style="padding-top:16px">
@@ -926,11 +933,11 @@ function vStock(snap,me){
   const tick=tickSize(s.last);
   // 수량 상한은 서버가 계산해서 준다(me.tradable).
   const tr=me.tradable.find(t=>t.code===s.code)||{maxBuyQty:0,maxSellQty:0};
-  // 호가창에서 가격을 고르면 지정가, 아니면 시장가(현재가 기준). 가격을 직접 치는 칸은 없다.
-  const market=U.px==null, px=market? s.last : U.px;
+  // 주문은 전부 지정가다. 가격은 현재가로 시작해 따라가다가, 호가를 누르거나 ± 를 누르면 그 값에 고정된다.
+  if(!U.pxPinned||U.px==null) U.px=s.last;
+  const px=U.px;
   const buying=U.side!=='sell';
-  // 서버의 maxBuyQty 는 최우선 매도호가 기준이다(시장가로 그대로 보내면 된다). 지정가면 그 가격으로 다시 센다.
-  const maxBuy=market? Math.min(tr.maxBuyQty, floorLot(me.cash/(px*(1+CFG.feeRate)))) : floorLot(me.cash/(px*(1+CFG.feeRate)));
+  const maxBuy=floorLot(me.cash/(px*(1+CFG.feeRate)));
   const maxSell=tr.maxSellQty;
   // 비율 칩과 '최대' 는 고른 쪽만 본다 — 매수 한도로 매도를 시도하던 혼선을 없앤다.
   const cap=buying?maxBuy:maxSell;
@@ -942,27 +949,34 @@ function vStock(snap,me){
   const maxQ=Math.max(1,...s.depth.bids.map(d=>d.qty),...s.depth.asks.map(d=>d.qty));
   const qmap=arr=>Object.fromEntries(arr.map(d=>[d.price,d.qty]));
   const ask=qmap(s.depth.asks), bid=qmap(s.depth.bids);
-  const priceCell=(p,side,best)=>{ const sel=!market&&U.px===p;
+  const priceCell=(p,side,best)=>{ const sel=U.pxPinned&&U.px===p, hiBg=side==='a'?'var(--downT)':'var(--upT)', hiLn=side==='a'?'var(--down)':'var(--up)';
     return `<button data-act="px" data-v="${p}" class="pcell" aria-pressed="${sel}" aria-label="${n(p)}원으로 주문"
-      style="background:${sel?'var(--accT)':best?'var(--upT)':'var(--surf)'};
-      border-left:1px solid ${sel?'var(--acc)':best?'var(--up)':'var(--line)'};border-right:1px solid ${sel?'var(--acc)':'var(--line)'}">
-      <div class="m" style="font-size:14px;font-weight:${best||sel?700:600};color:${side==='a'?'var(--down)':'var(--up)'}">${n(p)}</div>
-      <div class="m" style="font-size:9px;color:${sel?'var(--acc)':'var(--dim2)'};font-weight:${sel?700:400}">${
-        sel?'주문가':(s.open?pc((p/s.open-1)*100):'—')}</div></button>`; };
+      style="background:${sel?'var(--accT)':best?hiBg:'var(--surf)'};
+      border-left:1px solid ${sel?'var(--acc)':best?hiLn:'var(--line)'};border-right:1px solid ${sel?'var(--acc)':'var(--line)'}">
+      <span class="m" style="font-size:14px;font-weight:${best||sel?700:600};color:${sel?'var(--acc)':side==='a'?'var(--down)':'var(--up)'}">${n(p)}</span></button>`; };
+  // 사다리는 실제 호가창의 최우선 매수/매도호가에서 시작한다. 현재가(last) 기준으로 합성하면
+  // 현재가보다 위에 있는 매수호가가 보이지 않아, 1,140 에 판다고 생각한 주문이 1,170 에 체결되는 걸
+  // 화면이 설명하지 못했다. 최우선 호가가 없는 쪽은 반대편에서 한 호가 떨어진 곳부터 그린다.
+  const up=p=>roundTick(p+tickSize(p)), down=p=>Math.max(tickSize(p), roundTick(p-tickSize(p)));
+  const hasA=s.depth.asks.length>0, hasB=s.depth.bids.length>0;
+  const bestBid = hasB? s.depth.bids[0].price : (hasA? down(s.depth.asks[0].price) : s.last);
+  const bestAsk = hasA? s.depth.asks[0].price : up(bestBid);
+  const askRows=[], bidRows=[];
+  for(let p=bestAsk,i=0;i<10;i++){ askRows.push(p); p=up(p); }
+  for(let p=bestBid,i=0;i<10&&p>0;i++){ bidRows.push(p); const q=down(p); if(q===p) break; p=q; }
   let ladder='';
-  for(let i=10;i>=1;i--){ const p=s.last+i*tick, q=ask[p];
+  for(let i=askRows.length-1;i>=0;i--){ const p=askRows[i], q=ask[p];
     ladder+=`<div class="depthrow">
       <span class="qcell a">${mineTag(mineSell[p])}${q?`<span class="qbar" style="right:0;width:${q/maxQ*100}%;background:var(--downT)"></span>
         <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}</span>
-      ${priceCell(p,'a',false)}<span class="qcell b">${mineTag(mineBuy[p])}</span></div>`; }
-  ladder+=`<div style="display:flex;align-items:center;justify-content:center;gap:8px;height:28px;
+      ${priceCell(p,'a',i===0&&hasA)}<span class="qcell b">${mineTag(mineBuy[p])}</span></div>`; }
+  ladder+=`<div style="display:flex;align-items:center;justify-content:center;gap:8px;height:24px;
     background:var(--surf2);border-bottom:1px solid var(--line)">
     <span style="font-size:10px;color:var(--dim2)">스프레드</span>
-    <span class="m" style="font-size:11px;font-weight:600;color:var(--dim)">${
-      s.depth.asks.length&&s.depth.bids.length? n(s.depth.asks[0].price-s.depth.bids[0].price)+'원':'—'}</span></div>`;
-  for(let i=0;i<10;i++){ const p=s.last-i*tick; if(p<=0) break; const q=bid[p];
+    <span class="m" style="font-size:11px;font-weight:600;color:var(--dim)">${hasA&&hasB? n(bestAsk-bestBid)+'원':'—'}</span></div>`;
+  for(let i=0;i<bidRows.length;i++){ const p=bidRows[i], q=bid[p];
     ladder+=`<div class="depthrow">
-      <span class="qcell a">${mineTag(mineSell[p])}</span>${priceCell(p,'b',i===0)}
+      <span class="qcell a">${mineTag(mineSell[p])}</span>${priceCell(p,'b',i===0&&hasB)}
       <span class="qcell b">${q?`<span class="qbar" style="left:0;width:${q/maxQ*100}%;background:var(--upT)"></span>
         <span class="m" style="position:relative;font-size:13px;color:var(--dim)">${n(q)}</span>`:''}
         ${mineTag(mineBuy[p])}</span></div>`; }
@@ -985,20 +999,9 @@ function vStock(snap,me){
       <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--dim2)">
         <span>매도 ${(askTot/tot*100).toFixed(0)}%</span>
         <span>체결강도 <b class="m" style="color:${strength>=100?'var(--up)':'var(--down)'}">${strengthTxt}</b></span>
-        <span>매수 ${(bidTot/tot*100).toFixed(0)}%</span></div></div>
-    <div class="pad"><div class="hint">${svg(iInfo,16,'var(--dim2)',1.5)}
-      <span><b style="color:var(--dim)">가격을 누르면 그 값이 주문가(지정가)가 됩니다.</b> 다시 누르면 시장가로 돌아갑니다.
-        빈 칸은 그 가격에 주문이 없다는 뜻이고, 잔량이 두꺼울수록 시장가로 눌러도 가격이 덜 밀립니다.
-        체결강도는 최근 체결에서 매수 체결량을 매도 체결량으로 나눈 값입니다.</span></div></div>`
+        <span>매수 ${(bidTot/tot*100).toFixed(0)}%</span></div></div>`
   : U.tab==='차트' ? `
-    <div class="pad" style="padding-top:14px">
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:2px;background:var(--up)"></span>
-          <span style="font-size:11px;color:var(--dim)">체결가</span></span>
-        <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:2px dashed var(--warn)"></span>
-          <span style="font-size:11px;color:var(--dim)">적정가</span></span>
-        <span class="grow"></span><span class="m" style="font-size:10px;color:var(--dim2)">1초 1점</span></div>
-      <canvas id="chart"></canvas></div>`
+    <div class="pad" style="padding-top:10px"><canvas id="chart"></canvas></div>`
   : `<div class="sec" style="padding:14px 16px 8px"><h2 style="font-size:12px;color:var(--dim)">최근 체결 <small>${fills.length}건</small></h2>
       <span class="meta">체결강도 <b class="m" style="color:${strength>=100?'var(--up)':'var(--down)'}">${strengthTxt}</b></span></div>
     <div class="thead"><span style="width:52px">시간</span><span class="grow">체결가 · 시초가 대비</span>
@@ -1032,12 +1035,10 @@ function vStock(snap,me){
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
           <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${tri(s.changePct)}${n(Math.abs(s.last-s.open))}</span>
           <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${pc(s.changePct)}</span>
-          <span class="m" style="font-size:11px;color:var(--dim2)">시초가 대비</span></div></div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;padding-top:6px">
-        <span class="m" style="font-size:11px;color:var(--dim2)">적정가 ${n(s.fair)}</span></div></div>
-    <div class="kv" style="margin-top:10px">
-      ${[['시가',n(s.open),'var(--text)'],['고가',n(s.high),'var(--up)'],['저가',n(s.low),'var(--down)'],
-         ['거래량',n(s.volume),'var(--text)'],['발행주식',n(s.issued)+'주','var(--text)'],['호가단위',n(tick)+'원','var(--text)']]
+          <span class="m" style="font-size:11px;color:var(--dim2)">시초가 대비</span></div></div></div>
+    <div class="kv" style="margin-top:8px;grid-template-columns:repeat(4,1fr)">
+      ${[['고가',n(s.high),'var(--up)'],['저가',n(s.low),'var(--down)'],
+         ['거래량',n(s.volume),'var(--text)'],['발행주식',n(s.issued)+'주','var(--text)']]
         .map(([k,v,c])=>`<div><div class="k">${k}</div><div class="v m" style="color:${c}">${v}</div></div>`).join('')}</div></div>
   <div class="tabs">${['호가','차트','체결'].map(t=>`<button data-act="set" data-k="tab" data-v="${t}"
     aria-pressed="${U.tab===t}">${t}</button>`).join('')}</div>
@@ -1059,22 +1060,16 @@ function vStock(snap,me){
       <div class="m" style="font-size:14px;font-weight:700;margin-top:3px;color:${cl(hold.pnl)}">${sg(hold.pnl)} (${pc(hold.pnlPct)})</div></div></div></div>`:''}
   <div style="height:12px"></div>
   ${(hasMe&&trading)?`<div class="sticky">
-    <div class="seg" style="margin-bottom:8px">
+    <div class="seg" style="margin-bottom:6px">
       <button data-act="set" data-k="side" data-v="buy" aria-pressed="${buying}" style="${buying?'background:var(--up);color:#fff':''}">매수</button>
       <button data-act="set" data-k="side" data-v="sell" aria-pressed="${!buying}" style="${!buying?'background:var(--down);color:#fff':''}">매도</button></div>
-    <div class="step" style="margin-bottom:6px"><span style="font-size:11px;color:var(--dim2);width:32px">가격</span>
-      <span class="v m" style="display:flex;align-items:center;justify-content:flex-end;gap:6px">
-        ${market
-          ? `<span class="badge" style="background:var(--surf3);color:var(--dim)">시장가</span><span style="font-size:13px;color:var(--dim)">${n(s.last)}</span>`
-          : `<span class="badge" style="background:var(--accT);color:var(--acc)">지정가</span>${n(px)}
-             <button data-act="pxClear" aria-label="시장가로 되돌림" style="width:auto;height:22px;padding:0 7px;border-radius:6px;
-               background:transparent;border:1px solid var(--line);color:var(--dim);font-size:10px;font-weight:600">시장가로</button>`}</span>
-      <button data-act="pxStep" data-v="-1" aria-label="가격 한 호가 내림">${iMinus}</button>
-      <button data-act="pxStep" data-v="1" aria-label="가격 한 호가 올림">${iPlus}</button></div>
-    <div class="step"><span style="font-size:11px;color:var(--dim2);width:32px">수량</span>
-      <span class="v m">${n(U.qty)}</span>
-      <button data-act="q" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
-      <button data-act="q" data-v="1" aria-label="수량 늘림" ${U.qty>=cap?'disabled':''}>${iPlus}</button></div>
+    <div style="display:flex;gap:8px">
+      <div class="step sm"><span class="k">가격</span><span class="v m">${n(px)}</span>
+        <button data-act="pxStep" data-v="-1" aria-label="가격 한 호가 내림">${iMinus}</button>
+        <button data-act="pxStep" data-v="1" aria-label="가격 한 호가 올림">${iPlus}</button></div>
+      <div class="step sm"><span class="k">수량</span><span class="v m">${n(U.qty)}</span>
+        <button data-act="q" data-v="-1" aria-label="수량 줄임">${iMinus}</button>
+        <button data-act="q" data-v="1" aria-label="수량 늘림" ${U.qty>=cap?'disabled':''}>${iPlus}</button></div></div>
     <div class="chips" style="margin-top:6px">
       ${[10,25,50].map(r=>`<button data-act="ratio" data-v="${r}" class="m" ${cap<CFG.lotSize?'disabled':''}>${r}%</button>`).join('')}
       <button data-act="ratio" data-v="100" class="m" style="flex:1.5" ${cap<CFG.lotSize?'disabled':''}>최대 ${n(cap)}</button></div>
@@ -1082,7 +1077,7 @@ function vStock(snap,me){
       font-size:15px;font-weight:700;${U.qty<CFG.lotSize
         ? 'background:var(--surf3);color:var(--dim2)'
         : buying? 'background:var(--up);color:#fff' : 'background:var(--downT);border:1px solid var(--down);color:var(--down)'}">
-      ${U.qty<CFG.lotSize ? (buying?'현금이 부족합니다':'팔 주식이 없습니다') : `${market?'':n(px)+'원 · '}${n(U.qty)}주 ${buying?'매수':'매도'}`}</button></div>`:''}`;
+      ${U.qty<CFG.lotSize ? (buying?'현금이 부족합니다':'팔 주식이 없습니다') : `${n(px)}원 · ${n(U.qty)}주 ${buying?'매수':'매도'}`}</button></div>`:''}`;
 }
 
 /* 차트는 GET /api/rooms/{code}/chart 의 history 를 그린다 (1초에 한 점, 최대 1800점). */
@@ -1100,8 +1095,8 @@ function drawChart(){
     g.fillStyle='#5C6472'; g.font='500 12px "IBM Plex Sans KR",sans-serif'; g.textAlign='center';
     g.fillText('이력을 모으는 중…',w/2,h/2); return;
   }
-  const lo=Math.min(...hs.map(p=>Math.min(p.price,p.fair)))*0.99,
-        hi=Math.max(...hs.map(p=>Math.max(p.price,p.fair)))*1.01;
+  const lo=Math.min(...hs.map(p=>p.price))*0.99,
+        hi=Math.max(...hs.map(p=>p.price))*1.01;
   const RM=48, T=8, B=18, pw=w-RM;
   const X=i=>i/(hs.length-1)*pw, Y=v=>(hi-v)/(hi-lo||1)*(h-T-B)+T;
   // 격자와 눈금 — 실제 HTS 처럼 오른쪽에 가격, 아래에 시간을 단다.
@@ -1119,16 +1114,14 @@ function drawChart(){
   grad.addColorStop(0, upc?'rgba(255,77,94,.22)':'rgba(76,141,255,.22)'); grad.addColorStop(1,'rgba(0,0,0,0)');
   g.fillStyle=grad; g.beginPath(); g.moveTo(X(0),h-B);
   hs.forEach((p,i)=>g.lineTo(X(i),Y(p.price))); g.lineTo(X(hs.length-1),h-B); g.closePath(); g.fill();
-  g.setLineDash([5,4]); g.strokeStyle='#F5A524'; g.lineWidth=1.4; g.beginPath();
-  hs.forEach((p,i)=>i?g.lineTo(X(i),Y(p.fair)):g.moveTo(X(i),Y(p.fair))); g.stroke();
-  g.setLineDash([]); g.strokeStyle=upc?'#FF4D5E':'#4C8DFF'; g.lineWidth=1.8;
+  g.strokeStyle=upc?'#FF4D5E':'#4C8DFF'; g.lineWidth=1.8;
   g.lineJoin='round'; g.beginPath();
   hs.forEach((p,i)=>i?g.lineTo(X(i),Y(p.price)):g.moveTo(X(i),Y(p.price))); g.stroke();
   g.font='600 10px "IBM Plex Mono",monospace'; g.textBaseline='middle'; g.textAlign='left';
   const pill=(v,y,bg,fg)=>{const t=n(v),tw=g.measureText(t).width+10;
     g.fillStyle=bg; g.beginPath(); g.roundRect(w-tw-2,y-9,tw,18,4); g.fill();
     g.fillStyle=fg; g.fillText(t,w-tw+3,y);};
-  pill(s.last,Y(s.last),upc?'#FF4D5E':'#4C8DFF','#fff'); pill(Math.round(s.fair),Y(s.fair),'#F5A524','#0A0C10');
+  pill(s.last,Y(s.last),upc?'#FF4D5E':'#4C8DFF','#fff');
 }
 
 /* ---- 5. 결과 ---- */
@@ -1413,6 +1406,9 @@ function tradeCap(){
 
 async function submitOrder(code,side,price,qty,market){
   const r = await api('POST', R('/orders'), {code, side, qty, price: market? 'market' : price});
+  // 체결 토스트가 "지정가 X → Y 체결" 을 적을 수 있게 방금 낸 가격을 기억한다(60초).
+  S.lastPx = S.lastPx || {};
+  if(market) delete S.lastPx[code+'|'+side]; else S.lastPx[code+'|'+side] = {px:Number(price), t:Date.now()};
   // 시장가는 반대편 호가에 있는 만큼만 체결하고 남은 수량은 취소한다(IOC). 지정가가 없는
   // 화면에서 수량이 조용히 줄어들면 참가자는 이유를 알 수 없으므로 그때만 따로 알린다.
   if(market && r.filled>0 && r.filled<qty){
@@ -1431,7 +1427,7 @@ async function submitOrder(code,side,price,qty,market){
       <div style="width:32px;height:32px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
         justify-content:center;background:var(--accT)">${svg('M4 12.5l5 5L20 6.5',17,'var(--acc)',2)}</div>
       <div class="grow"><div style="font-size:13px;font-weight:700">${side==='buy'?'매수':'매도'} 주문 접수 · ${esc(st?st.name:code)}</div>
-        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">${n(price)} × ${n(qty)}주 · 즉시 체결 ${n(r.filled)}주 · 대기 ${n(r.resting)}주</div></div></div>`, 3600);
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:2px">지정가 ${n(price)} · 즉시 체결 ${n(r.filled)}주 · 대기 ${n(r.resting)}주</div></div></div>`, 3600);
   }
   return r;
 }
@@ -1506,13 +1502,13 @@ document.addEventListener('click', async e=>{
   }
 
   else if(a==='stock'){ const st=stockOf(v); if(!st) return;
-    U.code=v; U.qty=CFG.lotSize; U.px=null; return go('stock'); }
-  // 호가 선택 — 같은 가격을 다시 누르면 시장가로 돌아간다. ± 는 한 호가씩 옮긴다.
-  else if(a==='px'){ const p=Number(v); U.px = (U.px===p)? null : p; }
+    U.code=v; U.qty=CFG.lotSize; U.px=null; U.pxPinned=false; return go('stock'); }
+  // 호가 선택 — 그 가격에 고정된다. ± 는 한 호가씩 옮기고 역시 고정한다. 종목을 바꾸면 다시 현재가를 따라간다.
+  else if(a==='px'){ U.px=Number(v); U.pxPinned=true; }
   else if(a==='pxStep'){ const st=stockOf(U.code); if(!st) return;
     const base=U.px==null? st.last : U.px, t=tickSize(base);
-    U.px=Math.max(t, roundTick(base+Number(v)*t)); }
-  else if(a==='pxClear'){ U.px=null; }
+    U.px=Math.max(t, roundTick(base+Number(v)*t)); U.pxPinned=true; }
+  else if(a==='pxClear'){ U.pxPinned=false; }
   else if(a==='q'){ U.qty=Math.min(tradeCap(), Math.max(CFG.lotSize, U.qty+Number(v)*CFG.lotSize)); }
   else if(a==='ratio'){
     // 고른 방향의 한도에서만 센다. 매수 한도로 매도를 시도하던 혼선이 여기서 났다.
@@ -1537,12 +1533,9 @@ document.addEventListener('click', async e=>{
     const code=U.code, side=U.side, qty=U.qty, st=stockOf(code);
     if(qty<CFG.lotSize||!st) return;
     // 실제 HTS 처럼 확인창을 한 번 거친다. 끌 수 있고, 뉴스 토스트의 '바로 매수' 는 거치지 않는다.
-    const market=U.px==null, px=market? st.last : U.px;
-    if(U.confirmOn){ U.sheet={code, side, qty, px, market}; U.skipNext=false; return renderSheet(); }
-    return busy(async()=>{
-      const r=await submitOrder(code, side, market?null:px, qty, market);
-      if(market&&!r.filled) toastErr({code:'NOT_FILLED',message:'체결되지 않았습니다'});
-    });
+    const px=(U.pxPinned&&U.px!=null)? U.px : st.last;   // 주문은 전부 지정가다
+    if(U.confirmOn){ U.sheet={code, side, qty, px, market:false}; U.skipNext=false; return renderSheet(); }
+    return busy(async()=>{ await submitOrder(code, side, px, qty, false); });
   }
   renderNow();
 });
