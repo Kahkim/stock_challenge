@@ -146,9 +146,9 @@
   @keyframes fldn{from{background:rgba(76,141,255,.32)}to{background:transparent}}
   .kv{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
       border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .kv div{background:var(--surf);padding:6px 8px}
-  .kv .k{font-size:10px;color:var(--dim2)}
-  .kv .v{font-size:12px;font-weight:600;margin-top:3px}
+  .kv div{background:var(--surf);padding:4px 8px}
+  .kv .k{font-size:10px;color:var(--dim2);line-height:1.2}
+  .kv .v{font-size:12px;font-weight:600;margin-top:1px;line-height:1.2}
   .obtot{display:flex;align-items:center;height:36px;margin-top:-1px;border-top:1px solid var(--line2);
          border-bottom:1px solid var(--line2);background:var(--surf)}
   .obtot span{flex:1;padding:0 12px;font-size:12px;font-weight:700}
@@ -828,7 +828,7 @@ function vIpo(snap,me){
 /* ---- 3. 전체 시황 ---- */
 function vMarket(snap,me){
   const hasMe = !!S.me;
-  const sorted=[...snap.stocks].sort((a,b)=> b.changePct-a.changePct);
+  const sorted=[...snap.stocks].sort((a,b)=> a.name.localeCompare(b.name,'ko'));   // 가나다순
   // 순위표는 상위 20명까지만 실려 온다(대역폭). 내가 거기 없으면 내 줄을 따로 붙인다.
   const inTop = hasMe && snap.ranking.some(p=>p.id===me.id);
   return `<div style="padding:14px 16px 0;border-bottom:1px solid var(--line)">
@@ -883,8 +883,7 @@ function vMarket(snap,me){
     </div></div>`:''}
 
   <div class="pad" style="padding-top:16px;padding-bottom:8px">
-    <div style="font-size:14px;font-weight:700">전체 종목 <span style="color:var(--dim2);font-weight:500">${snap.stocks.length}</span>
-      <span style="font-size:11px;font-weight:500;color:var(--dim2);margin-left:6px">등락률순</span></div></div>
+    <div style="font-size:14px;font-weight:700">전체 종목 <span style="color:var(--dim2);font-weight:500">${snap.stocks.length}</span></div></div>
   <div class="thead"><span class="grow">종목</span><span style="width:84px;text-align:right">현재가 · 등락</span></div>
   <div>${sorted.map(s=>`
     <button data-act="stock" data-v="${s.code}" class="row" style="height:56px;width:100%;text-align:left">
@@ -894,14 +893,14 @@ function vMarket(snap,me){
           <span class="m" style="font-size:10px;color:var(--dim2);flex-shrink:0">${s.code}</span>
           ${s.issued===0?'<span class="badge" style="background:var(--surf3);color:var(--dim2)">미발행</span>':''}
           ${snap.news.some(nw=>nw.code===s.code)?`<span class="badge" style="background:var(--warnT);color:var(--warn)">뉴스</span>`:''}</div>
-        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">적정 ${n(s.fair)} · 거래량 ${n(s.volume)}</div></div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:3px">거래량 ${n(s.volume)}</div></div>
       <div class="rt" style="width:84px;flex-shrink:0">
         <div class="m" data-flash style="display:inline-block;font-size:16px;font-weight:700;color:${clz(s.changePct)};border-radius:4px;padding:0 3px;margin-right:-3px">${tri(s.changePct)}${n(s.last)}</div>
         <div class="m" style="font-size:12px;font-weight:600;margin-top:2px;color:${clz(s.changePct)}">${pc(s.changePct)}</div></div>
     </button>`).join('')}</div>
 
   <div class="pad" style="padding-top:16px;padding-bottom:8px">
-    <div style="font-size:14px;font-weight:700">사람 순위 <span style="color:var(--dim2);font-weight:500;font-size:11px">봇 제외 · 누적 투입 대비 · 상위 ${snap.ranking.length}명</span></div></div>
+    <div style="font-size:14px;font-weight:700">사람 순위</div></div>
   <div style="border-top:1px solid var(--line)">${snap.ranking.map(p=>rankRow(p, hasMe&&p.id===me.id)).join('')}
     ${(hasMe&&!inTop&&me.rank)?rankRow({rank:me.rank,name:me.name,nav:me.nav,
         pnl:me.nav-me.invested,pnlPct:me.nav/me.invested*100-100}, true):''}</div>
@@ -1025,18 +1024,15 @@ function vStock(snap,me){
       ${svg(iBolt,15,'var(--warn)',1.6)}
       <span class="grow" style="font-size:12px;font-weight:600;line-height:1.4">${esc(nw.headline)}</span>
       <span class="m" style="font-size:11px;color:var(--dim2);flex-shrink:0">${Math.max(0,nw.lifeSec-nw.ageSec)}초</span></div></div>`).join('')}
-  <div style="padding:12px 16px 10px">
-    <div style="display:flex;align-items:flex-start;gap:12px">
-      <div class="grow">
-        <div style="display:flex;align-items:baseline;gap:6px">
-          <div class="m" data-flash style="font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.1;color:${clz(s.changePct)};
-            border-radius:6px;padding:0 4px;margin-left:-4px">${n(s.last)}</div>
-          <div style="font-size:14px;color:var(--dim)">원</div></div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
-          <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${tri(s.changePct)}${n(Math.abs(s.last-s.open))}</span>
-          <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${pc(s.changePct)}</span>
-          <span class="m" style="font-size:11px;color:var(--dim2)">시초가 대비</span></div></div></div>
-    <div class="kv" style="margin-top:8px;grid-template-columns:repeat(4,1fr)">
+  <div style="padding:10px 16px 8px">
+    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+      <div class="m" data-flash style="font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1.1;color:${clz(s.changePct)};
+        border-radius:6px;padding:0 4px;margin-left:-4px">${n(s.last)}</div>
+      <div style="font-size:13px;color:var(--dim);margin-left:-4px">원</div>
+      <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)};margin-left:4px">${tri(s.changePct)}${n(Math.abs(s.last-s.open))}</span>
+      <span class="m" style="font-size:14px;font-weight:600;color:${clz(s.changePct)}">${pc(s.changePct)}</span>
+      <span class="m" style="font-size:11px;color:var(--dim2)">시초가 대비</span></div>
+    <div class="kv" style="margin-top:6px;grid-template-columns:repeat(4,1fr)">
       ${[['고가',n(s.high),'var(--up)'],['저가',n(s.low),'var(--down)'],
          ['거래량',n(s.volume),'var(--text)'],['발행주식',n(s.issued)+'주','var(--text)']]
         .map(([k,v,c])=>`<div><div class="k">${k}</div><div class="v m" style="color:${c}">${v}</div></div>`).join('')}</div></div>
