@@ -530,12 +530,10 @@ function onNotice(nt){
    sign 과 impactPct 는 방향이 그대로 드러나므로 화면에 쓰지 않는다(헤드라인으로 판단하는 게 설계 의도).
    바로 매수·매도는 편의가 아니라 밸런스다 — 뉴스에 소극적으로 대응하면 현금이 묶인 채 뒤처진다.
    주문은 화면 어디서나 시장가 하나뿐이므로 여기서도 가격을 만들지 않는다. */
+/* 돌발뉴스. 헤드라인을 누르면 그 종목으로 간다. '바로 매수/매도' 단추는 운영자 요청으로 뺐다 —
+   주문은 종목 화면에서 호가를 골라 낸다. */
 function onNews(nw){
   const s = stockOf(nw.code); if(!s) return;
-  const me = S.me;
-  const tr = (me&&me.tradable.find(t=>t.code===nw.code)) || {maxBuyQty:0,maxSellQty:0};
-  const canSell = tr.maxSellQty>=CFG.lotSize;
-  const canAct = !!me && S.snap && S.snap.phase==='trading';
   showToast(`<div style="display:flex;align-items:center;gap:9px">
       <span class="badge" style="background:var(--warnT);color:var(--warn);gap:4px;letter-spacing:.04em">
         ${svg(iBolt,12,'var(--warn)',1.6)}돌발 뉴스</span>
@@ -544,15 +542,6 @@ function onNews(nw){
       <span class="m" style="font-size:12px;font-weight:700">${n(s.last)}</span></div>
     <button data-act="stock" data-v="${nw.code}" style="display:block;width:100%;text-align:left;
       font-size:15px;font-weight:700;line-height:1.4;margin-top:9px">${esc(nw.headline)}</button>
-    ${canAct?`<div style="display:flex;gap:8px;margin-top:12px">
-      <button data-act="newsSell" data-v="${nw.code}" ${canSell?'':'disabled'}
-        style="flex:1;height:46px;border-radius:11px;background:${canSell?'var(--downT)':'transparent'};
-        border:1px solid ${canSell?'var(--down)':'var(--line)'};color:${canSell?'var(--down)':'var(--dim2)'};
-        font-size:14px;font-weight:700">바로 매도</button>
-      <button data-act="newsBuy" data-v="${nw.code}"
-        style="flex:1;height:46px;border-radius:11px;background:var(--up);color:#fff;
-        font-size:14px;font-weight:700">바로 매수</button></div>
-    <div style="font-size:10px;color:var(--dim2);margin-top:8px">보유 현금(또는 주식)의 절반으로 현재가에 즉시 체결합니다. 먼저 반응할수록 유리합니다.</div>`:''}
     <div class="tlife" style="animation-duration:11000ms"></div>`, 11000);
 }
 function newsBanner(snap){
@@ -1511,16 +1500,6 @@ document.addEventListener('click', async e=>{
     const cap=tradeCap(), q=floorLot(cap*Number(v)/100);
     U.qty = q>0 ? q : (cap>=CFG.lotSize ? CFG.lotSize : 0); }
 
-  else if(a==='newsBuy'||a==='newsSell'){
-    const st=stockOf(v); if(!st) return;
-    const t=me.tradable.find(x=>x.code===v)||{maxBuyQty:0,maxSellQty:0};
-    const buy=a==='newsBuy';
-    const cap=buy? Math.min(t.maxBuyQty, floorLot(me.cash/(st.last*(1+CFG.feeRate)))) : t.maxSellQty;
-    const qty=Math.max(CFG.lotSize, floorLot(cap*0.5));
-    if(cap<CFG.lotSize) return toastErr({code:buy?'INSUFFICIENT_CASH':'INSUFFICIENT_SHARES',
-      message:buy?'현금이 부족합니다':'보유 주식이 부족합니다'});
-    return busy(async()=>{ await submitOrder(v, buy?'buy':'sell', null, qty, true); });
-  }
   else if(a==='cancel'){
     const code=b.dataset.c, id=v;
     return busy(async()=>{ await api('POST', R('/orders/cancel'), {code, orderId:id}); });
