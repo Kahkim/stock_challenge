@@ -1224,17 +1224,17 @@ function vPortfolio(snap,me){
       <div class="grow" style="font-size:14px;font-weight:700">보유 종목
         <span style="color:var(--dim2);font-weight:500">${holds.length}</span></div>
       <div class="m" style="font-size:11px;color:var(--dim2)">평가 ${n(evalTotal)}</div></div></div>
-  ${holds.length? `<div class="thead"><span class="grow">종목 · 보유</span><span style="text-align:right">평가금액 · 손익</span></div>
+  ${holds.length? `<div class="thead"><span class="grow">종목 · 보유</span><span style="text-align:right">손익</span></div>
   <div>${holds.map(h=>{
     const st=stockOf(h.code)||{};
-    return `<button data-act="stock" data-v="${h.code}" class="row" style="height:74px;width:100%;text-align:left">
+    return `<button data-act="stock" data-v="${h.code}" class="row" style="height:64px;width:100%;text-align:left">
       ${dot(st.color)}
       <div class="grow"><div style="display:flex;align-items:center;gap:6px">
           <span style="font-size:15px;font-weight:600">${esc(h.name)}</span>
           ${h.locked?`<span class="badge m" style="background:var(--surf3);color:var(--dim2)">매도중 ${n(h.locked)}</span>`:''}</div>
-        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:4px">${n(h.qty)}주 · 평단 ${n(h.avgPrice)} → ${n(h.last)}</div></div>
-      <div class="rt"><div class="m" style="font-size:15px;font-weight:700">${n(h.evalAmount)}</div>
-        <div class="m" style="font-size:12px;font-weight:600;margin-top:3px;color:${cl(h.pnl)}">${sg(h.pnl)} · ${pc(h.pnlPct)}</div></div>
+        <div class="m" style="font-size:11px;color:var(--dim2);margin-top:4px">${n(h.qty)}주 · 평단 ${n(h.avgPrice)} · 현재가 ${n(h.last)}</div></div>
+      <div class="rt"><div class="m" style="font-size:14px;font-weight:700;color:${cl(h.pnl)}">${sg(h.pnl)}</div>
+        <div class="m" style="font-size:12px;font-weight:600;margin-top:3px;color:${cl(h.pnl)}">${pc(h.pnlPct)}</div></div>
     </button>`;}).join('')}</div>`
   : `<div class="pad"><div class="card" style="padding:24px 20px;text-align:center">
       <div style="font-size:14px;font-weight:600;color:var(--dim)">보유한 주식이 없습니다</div>
