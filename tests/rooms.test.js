@@ -18,7 +18,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { RoomStore, ROOM_IDLE_MS, sweepIntervalMs } = require('../src/rooms');
+const { RoomStore, ROOM_IDLE_MS, ROOM_ENDED_MS, sweepIntervalMs } = require('../src/rooms');
 const { PHASE } = require('../src/game');
 const persist = require('../src/persist');
 
@@ -50,9 +50,9 @@ function readEnvConfig(env, script) {
   return JSON.parse(out.trim().split('\n').pop());
 }
 const READ_ROOMS = "const r=require('./src/rooms');" +
-  "console.log(JSON.stringify({idle:r.ROOM_IDLE_MS,sweep:r.sweepIntervalMs()}))";
+  "console.log(JSON.stringify({idle:r.ROOM_IDLE_MS,ended:r.ROOM_ENDED_MS,sweep:r.sweepIntervalMs()}))";
 const READ_SERVER = "const s=require('./server');" +
-  "console.log(JSON.stringify({idle:s.ROOM_IDLE_MS,sweep:s.SWEEP_MS}))";
+  "console.log(JSON.stringify({idle:s.ROOM_IDLE_MS,ended:s.ROOM_ENDED_MS,sweep:s.SWEEP_MS}))";
 
 console.log('\n[방 정리 테스트]');
 
@@ -174,16 +174,18 @@ test('걷어낸 방의 저장 파일도 다음 저장에서 사라진다', () =>
 
 // ── 기준값과 훑는 주기 ───────────────────────────────────────────
 
-test('기본 기준값은 4시간이다', () => {
-  const r = readEnvConfig({ ROOM_IDLE_MS: '' }, READ_ROOMS);
+test('기본 기준값은 마감 30분 · 활동 없음 4시간이다', () => {
+  const r = readEnvConfig({ ROOM_IDLE_MS: '', ROOM_ENDED_MS: '' }, READ_ROOMS);
   assert.strictEqual(r.idle, 4 * HOUR);
+  assert.strictEqual(r.ended, 30 * 60 * 1000);
 });
 
-test('훑는 주기는 기준의 절반이고 10분을 넘지 않는다', () => {
-  assert.strictEqual(sweepIntervalMs(4 * HOUR), 10 * 60 * 1000);   // 평상시
-  assert.strictEqual(sweepIntervalMs(10 * 60 * 1000), 5 * 60 * 1000);
-  assert.strictEqual(sweepIntervalMs(60 * 1000), 30 * 1000);       // 리허설용 짧은 기준
-  assert.strictEqual(sweepIntervalMs(1000), 1000);                 // 하한
+test('훑는 주기는 두 기준 중 짧은 쪽의 절반이고 1분을 넘지 않는다', () => {
+  assert.strictEqual(sweepIntervalMs(4 * HOUR, 30 * 60 * 1000), 60 * 1000);  // 평상시: 30분의 절반은 15분이지만 1분이 상한
+  assert.strictEqual(sweepIntervalMs(4 * HOUR, 4 * HOUR), 60 * 1000);
+  assert.strictEqual(sweepIntervalMs(60 * 1000, 4 * HOUR), 30 * 1000);       // 리허설용 짧은 기준
+  assert.strictEqual(sweepIntervalMs(4 * HOUR, 10 * 1000), 5 * 1000);
+  assert.strictEqual(sweepIntervalMs(1000), 1000);                           // 하한
   assert.strictEqual(sweepIntervalMs(1), 1000);
 });
 
@@ -204,9 +206,10 @@ test('ROOM_IDLE_MS 가 이상한 값이면 기본값으로 돌아간다', () => 
 });
 
 test('서버가 그 기준값으로 훑는 주기를 정한다', () => {
-  const def = readEnvConfig({ ROOM_IDLE_MS: '' }, READ_SERVER);
+  const def = readEnvConfig({ ROOM_IDLE_MS: '', ROOM_ENDED_MS: '' }, READ_SERVER);
   assert.strictEqual(def.idle, 4 * HOUR);
-  assert.strictEqual(def.sweep, 10 * 60 * 1000);
+  assert.strictEqual(def.ended, 30 * 60 * 1000);
+  assert.strictEqual(def.sweep, 60 * 1000);
 
   const short = readEnvConfig({ ROOM_IDLE_MS: String(2 * 60 * 1000) }, READ_SERVER);
   assert.strictEqual(short.idle, 2 * 60 * 1000);
@@ -225,6 +228,45 @@ test('기준값을 넘기지 않으면 모듈 기본값을 쓴다', () => {
   r2.lastActivity = Date.now() - (ROOM_IDLE_MS - 60 * 1000);
   store2.sweep();
   assert.ok(store2.get(r2.code), '기준에 1분 못 미치면 남아 있어야 한다');
+});
+
+test('ROOM_ENDED_MS 로 마감된 방의 보존 시간을 따로 바꿀 수 있다', () => {
+  const r = readEnvConfig({ ROOM_ENDED_MS: String(5 * 60 * 1000) }, READ_ROOMS);
+  assert.strictEqual(r.ended, 5 * 60 * 1000);
+  assert.strictEqual(r.idle, 4 * HOUR, '활동 기준은 그대로다');
+  assert.strictEqual(r.sweep, 60 * 1000, '5분의 절반은 2.5분이지만 1분을 넘기지 않는다');
+  const s = readEnvConfig({ ROOM_ENDED_MS: String(5 * 60 * 1000) }, READ_SERVER);
+  assert.strictEqual(s.ended, 5 * 60 * 1000);
+  assert.strictEqual(s.sweep, 60 * 1000);
+});
+
+test('ROOM_ENDED_MS 가 이상한 값이면 기본값(30분)으로 돌아간다', () => {
+  for (const bad of ['0', '-1', 'abc', '']) {
+    const r = readEnvConfig({ ROOM_ENDED_MS: bad }, READ_ROOMS);
+    assert.strictEqual(r.ended, 30 * 60 * 1000, `ROOM_ENDED_MS=${JSON.stringify(bad)} 는 무시돼야 한다`);
+  }
+});
+
+test('마감된 방은 활동 기준보다 훨씬 짧은 마감 기준으로 걷힌다', () => {
+  const store = new RoomStore();
+  const ended = makeRoom(store, { ended: true });
+  const live = makeRoom(store);
+  ended.game.endedAt = Date.now() - 5000; ended.lastActivity = Date.now();
+  live.lastActivity = Date.now() - 5000;
+  store.sweep({ endedMs: 1000, idleMs: HOUR });
+  assert.strictEqual(store.get(ended.code), null, '마감 5초 지난 방은 1초 기준에 걷힌다');
+  assert.ok(store.get(live.code), '진행 중인 방은 활동 기준(1시간)을 안 넘겼으니 남는다');
+});
+
+test('인자 없이 훑으면 마감 방은 ROOM_ENDED_MS, 나머지는 ROOM_IDLE_MS 를 쓴다', () => {
+  const store = new RoomStore();
+  const gone = makeRoom(store, { ended: true });
+  gone.game.endedAt = Date.now() - (ROOM_ENDED_MS + 60 * 1000); gone.lastActivity = Date.now();
+  const kept = makeRoom(store, { ended: true });
+  kept.game.endedAt = Date.now() - (ROOM_ENDED_MS - 60 * 1000); kept.lastActivity = Date.now();
+  store.sweep();
+  assert.strictEqual(store.get(gone.code), null, '마감 기준을 1분 넘긴 방은 걷힌다');
+  assert.ok(store.get(kept.code), '마감 기준에 1분 못 미치면 남는다');
 });
 
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

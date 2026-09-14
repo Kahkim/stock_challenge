@@ -15,7 +15,7 @@ const http = require('http');
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
-const { RoomStore, ROOM_IDLE_MS, sweepIntervalMs } = require('./src/rooms');
+const { RoomStore, ROOM_IDLE_MS, ROOM_ENDED_MS, sweepIntervalMs } = require('./src/rooms');
 const { Limiter } = require('./src/ratelimit');
 const { Room } = require('./src/rooms');
 const persist = require('./src/persist');
@@ -29,7 +29,7 @@ const MAX_BODY = 256 * 1024;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 const store = new RoomStore();
-// 끝난 방과 버려진 방을 걷어낸다. 기준은 ROOM_IDLE_MS (기본 4시간).
+// 마감된 방은 ROOM_ENDED_MS(기본 30분), 조용한 방은 ROOM_IDLE_MS(기본 4시간) 뒤에 걷어낸다.
 const SWEEP_MS = sweepIntervalMs();
 setInterval(() => store.sweep(), SWEEP_MS).unref();
 
@@ -530,10 +530,10 @@ if (require.main === module) {
     }
     console.log('  ─────────────────────────────────────────────');
     console.log(`  SSE 푸시 ${PUSH_MS}ms · 저장 ${PERSIST_DIR ? PERSIST_DIR + ' (' + PERSIST_MS + 'ms 주기)' : '끔'}`);
-    console.log(`  방 정리 ${humanMs(ROOM_IDLE_MS)} (${humanMs(SWEEP_MS)}마다 확인) — 결과는 그때까지 받아갈 수 있습니다`);
+    console.log(`  방 정리: 마감 뒤 ${humanMs(ROOM_ENDED_MS)} · 활동 없는 방 ${humanMs(ROOM_IDLE_MS)} (${humanMs(SWEEP_MS)}마다 확인) — 결과 CSV 는 마감 뒤 ${humanMs(ROOM_ENDED_MS)} 안에 받아가세요`);
     console.log('  Ctrl+C 로 종료하면 진행 중인 방을 저장합니다');
     console.log('');
   });
 }
 
-module.exports = { server, store, PHASE, LIMITS, persist, PERSIST_DIR, ROOM_IDLE_MS, SWEEP_MS };
+module.exports = { server, store, PHASE, LIMITS, persist, PERSIST_DIR, ROOM_IDLE_MS, ROOM_ENDED_MS, SWEEP_MS };
